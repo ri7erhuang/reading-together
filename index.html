@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>朝花夕拾 · 共读批注</title>
+<style>
+:root{
+  --paper:#faf7f0; --card:#ffffff; --ink:#2b2a26; --ink2:#6b675e; --ink3:#9b968a;
+  --line:#e5e0d4; --accent:#a63e2c;
+  --dad:#185fa5; --dad-mid:#378add; --dad-bg:#e6f1fb;
+  --son:#993c1d; --son-mid:#d85a30; --son-bg:#faece7;
+  --kd:#3b6d11; --kd-bg:#eaf3de;
+  --am:#854f0b; --am-bg:#faeeda;
+  --serif:"Songti SC","STSong","SimSun",serif;
+  --kai:"Kaiti SC","STKaiti","KaiTi",serif;
+  /* 可调排版：正文 / 批注 / 回复，由设置弹窗改写 */
+  --font-body:var(--serif); --fs-body:18px;
+  --font-note:var(--serif); --fs-note:14px;
+  --font-reply:var(--serif); --fs-reply:13px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:16px}
+button{font-family:inherit;cursor:pointer}
+
+/* ---------- 顶栏 ---------- */
+header{position:sticky;top:0;z-index:50;background:rgba(250,247,240,.96);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:10px 22px;backdrop-filter:blur(4px)}
+header .brand{font-family:var(--kai);font-size:22px;font-weight:700;letter-spacing:2px}
+header .brand em{font-style:normal;color:var(--accent)}
+header .sub{color:var(--ink3);font-size:13px;margin-top:2px}
+header .spacer{flex:1}
+header .hbtn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 14px;
+  font-size:13px;color:var(--ink2)}
+header .hbtn:hover{border-color:var(--ink3);color:var(--ink)}
+
+/* ---------- 首页 ---------- */
+#home{max-width:960px;margin:0 auto;padding:36px 22px 80px}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:30px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 20px;min-width:130px}
+.stat .n{font-size:26px;font-weight:700;font-family:var(--kai)}
+.stat .n.dad{color:var(--dad)} .stat .n.son{color:var(--son)} .stat .n.all{color:var(--accent)}
+.stat .l{font-size:12px;color:var(--ink3);margin-top:2px}
+.essay-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.ecard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+  display:block;text-decoration:none;color:inherit;transition:transform .12s,border-color .12s;position:relative}
+.ecard:hover{transform:translateY(-2px);border-color:var(--ink3)}
+.ecard .no{position:absolute;top:14px;right:16px;font-family:var(--kai);font-size:24px;color:var(--line)}
+.ecard h3{font-family:var(--kai);font-size:19px;margin-bottom:6px;letter-spacing:1px}
+.ecard .tag{font-size:12px;color:var(--ink2);margin-bottom:12px}
+.ecard .foot{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink3)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.dad{background:var(--dad-mid)} .dot.son{background:var(--son-mid)}
+.lit{color:var(--kd);font-weight:700}
+.home-intro{font-size:14px;color:var(--ink2);line-height:1.9;margin-bottom:26px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px}
+.home-intro b{color:var(--accent)}
+
+/* ---------- 阅读页 ---------- */
+#reader{max-width:1080px;margin:0 auto;padding:26px 22px 100px}
+.back{border:none;background:none;color:var(--ink3);font-size:14px;padding:4px 0;margin-bottom:10px}
+.back:hover{color:var(--ink)}
+.essay-head{border-bottom:2px solid var(--ink);padding-bottom:16px;margin-bottom:34px}
+.essay-head h2{font-family:var(--kai);font-size:30px;letter-spacing:3px}
+.essay-head .meta{margin-top:8px;font-size:13px;color:var(--ink3);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.essay-head .meta .cnt b.dad{color:var(--dad)} .essay-head .meta .cnt b.son{color:var(--son)}
+.para-row{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0 26px;padding:2px 0;position:relative}
+.para{font-family:var(--font-body);font-size:var(--fs-body);line-height:2.1;text-indent:2em;padding:6px 8px 6px 0;position:relative;cursor:text}
+.para.pre{white-space:pre-line}
+.para.sign{text-align:right;text-indent:0;color:var(--ink2);font-family:var(--kai)}
+/* 句级高亮：被批注的原文 */
+.hl{padding:1px 0;border-radius:2px;transition:background .15s,box-shadow .15s}
+.hl-dad{background:rgba(55,138,221,.18);box-shadow:inset 0 -2px 0 rgba(55,138,221,.55)}
+.hl-son{background:rgba(216,90,48,.18);box-shadow:inset 0 -2px 0 rgba(216,90,48,.55)}
+.hl-both{background:rgba(186,117,23,.19);box-shadow:inset 0 -2px 0 rgba(186,117,23,.55)}
+.hl-dad.hit{background:rgba(55,138,221,.32);box-shadow:inset 0 -3px 0 rgba(55,138,221,.8)}
+.hl-son.hit{background:rgba(216,90,48,.32);box-shadow:inset 0 -3px 0 rgba(216,90,48,.8)}
+.hl-both.hit{background:rgba(186,117,23,.34);box-shadow:inset 0 -3px 0 rgba(186,117,23,.8)}
+/* 原文旁的编号小签，与边栏批注编号对应 */
+.mk{position:relative;top:-.55em;margin-left:2px;font-size:11px;line-height:0;padding:1px 5px;
+  border-radius:8px;font-weight:700;cursor:pointer}
+.mk.dad,.nnum.dad{background:var(--dad-bg);color:var(--dad)}
+.mk.son,.nnum.son{background:var(--son-bg);color:var(--son)}
+.mk.hit{box-shadow:0 0 0 2px rgba(43,42,38,.3)}
+.para.flash{animation:flash 1.6s ease}
+@keyframes flash{0%{background:rgba(166,62,44,.15)}100%{background:transparent}}
+/* 划选浮条 */
+#selBar{position:fixed;z-index:90;display:none;transform:translate(-50%,-118%);
+  background:var(--ink);border-radius:9px;padding:3px;box-shadow:0 6px 20px rgba(43,42,38,.25);
+  align-items:center}
+#selBar button{background:none;border:none;color:#fff;font-size:13px;padding:6px 11px;border-radius:6px;
+  font-family:inherit;white-space:nowrap}
+#selBar button:hover{background:rgba(255,255,255,.17)}
+#selBar button+button{border-left:1px solid rgba(255,255,255,.2);border-radius:0 6px 6px 0}
+.notes{display:flex;flex-direction:column;gap:8px;justify-content:center;padding:6px 0}
+.note{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:0 10px 10px 0;
+  padding:10px 12px;position:relative;font-family:var(--font-note);font-size:var(--fs-note);
+  transition:background .15s,transform .15s,box-shadow .15s,border-color .15s}
+.note.dad{border-left-color:var(--dad-mid);background:#f7fbff}
+.note.son{border-left-color:var(--son-mid);background:#fefaf7}
+.note.hit{transform:translateX(-5px);box-shadow:0 3px 12px rgba(43,42,38,.10);border-color:var(--ink3)}
+.note.dad.hit{background:#eaf4fd;border-left-color:var(--dad)}
+.note.son.hit{background:#fdefe8;border-left-color:var(--son)}
+.nnum{display:inline-block;min-width:18px;height:18px;line-height:18px;text-align:center;
+  border-radius:5px;font-size:11px;font-weight:700;margin-right:2px}
+.note .nh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px}
+.note .who{font-weight:700;font-size:.95em}
+.note.dad .who{color:var(--dad)} .note.son .who{color:var(--son)}
+.note .when{font-size:.78em;color:var(--ink3);margin-left:auto}
+.note .q{font-size:.88em;color:var(--ink2);background:var(--paper);border-radius:6px;padding:4px 8px;
+  margin-bottom:5px;line-height:1.7}
+.note .tx{line-height:1.8;color:var(--ink)}
+.badge{font-size:.8em;border-radius:8px;padding:1px 8px}
+.badge.tucao{background:var(--son-bg);color:var(--son)}
+.badge.question{background:var(--dad-bg);color:var(--dad)}
+.badge.kaodian{background:var(--kd-bg);color:var(--kd)}
+.badge.brilliant{background:var(--am-bg);color:var(--am)}
+.src{font-size:.72em;color:var(--ink3);margin-top:4px}
+/* 回复对话流 */
+.replies{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:6px}
+.reply{font-family:var(--font-reply);font-size:var(--fs-reply);line-height:1.75;color:var(--ink)}
+.reply>b{font-weight:700}
+.reply.dad>b{color:var(--dad)} .reply.son>b{color:var(--son)}
+.reply .rt{font-size:.76em;color:var(--ink3);margin-left:6px;font-weight:400}
+.reply .rdel{font-size:10px;color:var(--ink3);border:none;background:none;padding:0 3px;font-weight:400}
+.reply .rdel:hover{color:var(--accent)}
+.reply-btn{border:none;background:none;color:var(--ink3);font-size:12px;padding:0}
+.reply-btn:hover{color:var(--accent)}
+/* 卡片底部操作行：回复在左，删在右 */
+.nfoot{display:flex;align-items:center;gap:12px;margin-top:7px}
+.note .del{display:none;margin-left:auto;border:none;background:none;color:var(--ink3);
+  font-size:12px;padding:0 2px;line-height:1}
+.note:hover .del{display:inline-block}
+.note .del:hover{color:var(--accent)}
+.reply-box{display:none;flex-direction:column;gap:6px;margin-top:7px}
+.reply-box.open{display:flex}
+.reply-box .who{display:flex;gap:6px;align-items:center}
+.reply-box .who span{font-size:11px;color:var(--ink3)}
+.reply-box .who button{font-size:12px;border:1px solid var(--line);background:var(--card);border-radius:7px;padding:3px 10px}
+.reply-box .who button.on-dad{border-color:var(--dad-mid);background:var(--dad-bg);color:var(--dad);font-weight:700}
+.reply-box .who button.on-son{border-color:var(--son-mid);background:var(--son-bg);color:var(--son);font-weight:700}
+.reply-box textarea{min-height:52px;font-size:13px;line-height:1.7;border:1px solid var(--line);
+  border-radius:8px;padding:6px 9px;font-family:inherit;background:var(--paper);color:var(--ink);resize:vertical}
+.reply-box .rrow{display:flex;gap:6px;justify-content:flex-end}
+.reply-box .send{background:var(--ink);color:#fff;border:none;border-radius:7px;padding:5px 16px;font-size:12px}
+.reply-box .cn{border:1px solid var(--line);background:none;border-radius:7px;padding:5px 12px;font-size:12px;color:var(--ink2)}
+
+/* ---------- 弹窗 ---------- */
+.overlay{position:fixed;inset:0;background:rgba(43,42,38,.35);z-index:100;display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.overlay.hidden{display:none}
+.modal{background:var(--card);border-radius:14px;max-width:520px;width:100%;padding:24px 26px;
+  max-height:90vh;overflow:auto}
+.modal h3{font-family:var(--kai);font-size:20px;margin-bottom:4px}
+.modal .mh{font-size:12px;color:var(--ink3);margin-bottom:18px}
+.modal label{display:block;font-size:13px;color:var(--ink2);margin:14px 0 6px}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;border:1px solid var(--line);background:var(--card);border-radius:9px;padding:9px 0;
+  font-size:15px;font-weight:700}
+.seg button.sel-dad{border-color:var(--dad-mid);background:var(--dad-bg);color:var(--dad)}
+.seg button.sel-son{border-color:var(--son-mid);background:var(--son-bg);color:var(--son)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px;font-size:13px}
+.chips button.on{font-weight:700}
+.chips button.on[data-t=tucao]{background:var(--son-bg);border-color:var(--son-mid);color:var(--son)}
+.chips button.on[data-t=question]{background:var(--dad-bg);border-color:var(--dad-mid);color:var(--dad)}
+.chips button.on[data-t=kaodian]{background:var(--kd-bg);border-color:#97c459;color:var(--kd)}
+.chips button.on[data-t=brilliant]{background:var(--am-bg);border-color:#ef9f27;color:var(--am)}
+.modal input[type=text],.modal textarea{width:100%;border:1px solid var(--line);border-radius:9px;
+  padding:9px 12px;font-family:inherit;font-size:14px;background:var(--paper);color:var(--ink)}
+.modal textarea{min-height:88px;resize:vertical;line-height:1.7}
+.modal .btns{display:flex;gap:10px;margin-top:20px}
+.modal .btns .ok{flex:1;background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px 0;font-size:15px}
+.modal .btns .cc{border:1px solid var(--line);background:none;border-radius:9px;padding:11px 22px;color:var(--ink2)}
+.hint{font-size:11px;color:var(--ink3);margin-top:4px}
+/* 显示设置 */
+.setrow{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.setrow select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:inherit;
+  font-size:13px;background:var(--paper);color:var(--ink);min-width:104px}
+.setrow input[type=range]{flex:1;accent-color:#a63e2c;height:20px}
+.sv{font-size:12px;color:var(--ink3);min-width:40px;text-align:right}
+.pv{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:12px}
+.pv .para{padding:0 0 6px 0}
+.pv .note{margin-top:4px}
+/* AI 助读卡片 */
+.note.ai{border-left-color:#7f77dd;background:#f8f7fe}
+.note.ai .who{color:#534ab7}
+.note.ai.hit{background:#f0effd;border-left-color:#534ab7}
+.note .ask{font-size:.88em;color:var(--ink2);margin:2px 0 6px}
+.note .ans{line-height:1.85;color:var(--ink)}
+.note .ans.loading{color:var(--ink3);font-size:.9em}
+/* 批注过多 / 内容过长的折叠 */
+.more-btn{background:none;border:1px dashed var(--line);border-radius:8px;color:var(--ink3);
+  font-size:12px;padding:7px 10px;text-align:left;font-family:inherit}
+.more-btn:hover{border-color:var(--ink3);color:var(--ink2)}
+.showmore{background:none;border:none;color:#534ab7;font-size:.82em;padding:2px 0;margin-top:2px;
+  font-family:inherit}
+.showmore:hover{text-decoration:underline}
+.badge.aiask{background:#eeedfe;color:#534ab7}
+.mk.ai,.nnum.ai{background:#eeedfe;color:#534ab7}
+.hl-ai{background:rgba(127,119,221,.16);box-shadow:inset 0 -2px 0 rgba(127,119,221,.55)}
+.hl-ai.hit{background:rgba(127,119,221,.3);box-shadow:inset 0 -3px 0 rgba(127,119,221,.8)}
+.dots i{display:inline-block;width:4px;height:4px;border-radius:50%;background:currentColor;
+  margin-left:3px;animation:blink 1.2s infinite}
+.dots i:nth-child(2){animation-delay:.2s}
+.dots i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+/* 查字词弹窗 */
+.dictword{font-family:var(--kai);font-size:30px;letter-spacing:2px;margin-bottom:4px}
+.dictpy{color:var(--accent);font-size:15px;letter-spacing:1px;margin-bottom:14px}
+.dictdef{font-size:15px;line-height:1.95;color:var(--ink)}
+.dictmiss{font-size:15px;line-height:1.9;color:var(--ink2)}
+/* 问 AI 弹窗 */
+.askquote{background:var(--paper);border-left:3px solid #7f77dd;border-radius:0 8px 8px 0;
+  padding:10px 14px;font-size:14px;line-height:1.85;color:var(--ink2);margin-bottom:14px;
+  max-height:110px;overflow:auto}
+.askbox textarea{width:100%;min-height:92px;border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;font-family:inherit;font-size:14px;line-height:1.75;background:var(--paper);
+  color:var(--ink);resize:vertical}
+.askbox textarea:focus{outline:none;border-color:#7f77dd}
+.askfoot{display:flex;align-items:center;gap:10px;margin-top:8px}
+.askfoot .hint{flex:1;margin:0}
+.askfoot .send{background:#534ab7;color:#fff;border:none;border-radius:9px;padding:9px 22px;font-size:14px}
+.askfoot .send:hover{background:#3c3489}
+.two-input{display:flex;gap:10px}.two-input>div{flex:1}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:900px){
+  .para-row{grid-template-columns:minmax(0,1fr)}
+  .notes{grid-column:1;margin:2px 0 14px}
+  header .sub{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand">朝花<em>夕拾</em> · 共读批注</div>
+    <div class="sub">鲁迅 · 一本父子各读一遍的书</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="hbtn" id="btnDisplay">显示设置</button>
+  <button class="hbtn" id="btnNames">昵称</button>
+  <button class="hbtn" id="btnExport">导出备份</button>
+</header>
+
+<div id="home"></div>
+<div id="reader" style="display:none"></div>
+<div id="selBar">
+  <button data-act="note">批注</button><button data-act="dict">查字词</button><button data-act="ai">问AI</button>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<script src="texts.js"></script>
+<script src="danmaku_data.js"></script>
+<script>
+/* ================= 数据层 ================= */
+var LS_LOCAL='rtz_local_v1', LS_HIDDEN='rtz_hidden_v1', LS_NAMES='rtz_names_v1', LS_REPLIES='rtz_replies_v1', LS_SETTINGS='rtz_settings_v1';
+var ORDER=[
+  ["wuchanghui","五猖会","开局推荐 · 写家长扫兴，共鸣拉满"],
+  ["baicaoyuan","从百草园到三味书屋","必考名篇 · 童年乐园"],
+  ["achang","阿长与《山海经》","人物形象题大户 · 欲扬先抑"],
+  ["wuchang","无常","戏文里的鬼 · 人间百态"],
+  ["fudebing","父亲的病","批判与自省"],
+  ["suoji","琐记","离家出走式成长"],
+  ["tengye","藤野先生","必考 · 一位改变他的老师"],
+  ["fanainong","范爱农","知识分子群像"],
+  ["xiaoyin","小引","全书的说明书"],
+  ["ershisi","二十四孝图","难啃预警 · 讽刺火力最猛"],
+  ["goumaoshu","狗·猫·鼠","全书最难 · 压轴啃"],
+  ["houji","后记","考证癖的狂欢 · 选读"]
+];
+var TYPES={tucao:"吐槽",question:"疑问",kaodian:"考点雷达",brilliant:"神来之笔",aiask:"助读"};
+var TYPE_DESC={tucao:"怎么皮怎么来",question:"读到不懂就问",kaodian:"贴近考点的正经批注",brilliant:"原文写得太好了"};
+
+function jload(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
+function jsave(k,v){localStorage.setItem(k,JSON.stringify(v))}
+var LOCAL=jload(LS_LOCAL,[]), HIDDEN=jload(LS_HIDDEN,[]);
+var NAMES=jload(LS_NAMES,{dad:"爸爸",son:"儿子"});
+var LREPLIES=jload(LS_REPLIES,{});
+var ARCHIVE=(window.DANMAKU_ARCHIVE||[]);
+/* 展开状态（内存级）：段落展开全部批注 / 单条批注展开全文 */
+var EXPANDED_PARA={}, EXPANDED_NOTE={}, PARA_LIMIT=2, CLIP=120;
+
+/* ---- 显示设置：正文/批注/回复 各自的字体与字号 ---- */
+var FONTS={
+  song:{n:"宋体",v:'"Songti SC","STSong","SimSun",serif'},
+  kai:{n:"楷体",v:'"Kaiti SC","STKaiti","KaiTi",serif'},
+  hei:{n:"黑体",v:'"PingFang SC","Microsoft YaHei","Heiti SC",sans-serif'},
+  sys:{n:"系统默认",v:'-apple-system,"PingFang SC","Microsoft YaHei",sans-serif'}
+};
+var FRANGE={body:[14,26],note:[11,20],reply:[10,18]};
+var FLABEL={body:"文章正文",note:"批注",reply:"批注的回复"};
+var FDEF={body:{font:"song",size:18},note:{font:"song",size:14},reply:{font:"song",size:13}};
+var SETT=jload(LS_SETTINGS,JSON.parse(JSON.stringify(FDEF)));
+function applySettings(){
+  var r=document.documentElement.style;
+  ["body","note","reply"].forEach(function(k){
+    var f=FONTS[SETT[k].font]||FONTS.song;
+    r.setProperty("--font-"+k,f.v);
+    r.setProperty("--fs-"+k,SETT[k].size+"px");
+  });
+}
+applySettings();
+
+/* 某条批注的全部回复：档案自带 + 本地追加，按时间排序 */
+function repliesOf(n){
+  var base=(n.replies||[]).map(function(r){return r});
+  var extra=(LREPLIES[n.id]||[]).map(function(r){var c={};for(var k in r)c[k]=r[k];c._local=1;return c});
+  return base.concat(extra).sort(function(a,b){return (a.time||"")<(b.time||"")?-1:1});
+}
+
+function allNotes(){return ARCHIVE.filter(function(a){return HIDDEN.indexOf(a.id)<0}).concat(LOCAL)}
+function notesOf(essayKey){return allNotes().filter(function(n){return n.essay===essayKey}
+  ).sort(function(a,b){return a.time<b.time?-1:1})}
+function esc(s){return String(s==null?"":s)}
+function fmtTime(t){
+  var m=/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(t||"");
+  if(!m)return t||"";
+  var now=new Date().getFullYear();
+  return (m[1]==String(now)?"":m[1]+"年 ")+parseInt(m[2],10)+"月"+parseInt(m[3],10)+"日 "+m[4];
+}
+function nowStr(){var d=new Date();function p(n){return (n<10?"0":"")+n}
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())}
+function uid(){return "dm_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7)}
+function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+/* 在段落原文中定位摘录句；quote 须为原文连续子串 */
+function findQuote(text,q){
+  q=(q||"").trim();if(!q)return -1;
+  var i=text.indexOf(q);
+  if(i>=0)return i;
+  var q2=q.replace(/^[“「『《（]+/,"").replace(/[”』』》）]+$/,"").trim();
+  return q2?text.indexOf(q2):-1;
+}
+/* 把段落的批注渲染为句级高亮 HTML：重叠区间合并，父子同句用琥珀色，句尾带编号小签 */
+function paraHtml(ptext,pn){
+  var ranges=[];
+  pn.forEach(function(n,idx){
+    if(!n.quote)return;
+    var s=findQuote(ptext,n.quote);
+    if(s>=0){var a={};a[n.author]=1;ranges.push({s:s,e:s+n.quote.length,a:a,i:idx})}
+  });
+  ranges.sort(function(x,y){return x.s-y.s});
+  var merged=[];
+  ranges.forEach(function(r){
+    var last=merged[merged.length-1];
+    if(last&&r.s<last.e){last.e=Math.max(last.e,r.e);for(var k in r.a)last.a[k]=1;last.ids.push(r.i)}
+    else merged.push({s:r.s,e:r.e,a:r.a,ids:[r.i]});
+  });
+  var html="",cur=0;
+  merged.forEach(function(m){
+    var cls=(m.a.dad&&m.a.son)?"hl-both":(m.a.ai?"hl-ai":(m.a.dad?"hl-dad":"hl-son"));
+    var ids=m.ids.map(function(i){return pn[i].id}).join(",");
+    var marks=m.ids.sort(function(x,y){return x-y}).map(function(i){
+      return '<span class="mk '+pn[i].author+'" data-ids="'+pn[i].id+'">'+(i+1)+'</span>';
+    }).join("");
+    html+=escHtml(ptext.slice(cur,m.s))+
+      '<span class="hl '+cls+'" data-ids="'+ids+'">'+escHtml(ptext.slice(m.s,m.e))+'</span>'+marks;
+    cur=m.e;
+  });
+  html+=escHtml(ptext.slice(cur));
+  return html.replace(/\n/g,"<br>");
+}
+
+/* ================= 首页 ================= */
+function renderHome(){
+  var notes=allNotes();
+  var nd=notes.filter(function(n){return n.author==="dad"}).length;
+  var ns=notes.filter(function(n){return n.author==="son"}).length;
+  var na=notes.filter(function(n){return n.author==="ai"}).length;
+  var litKeys={};notes.forEach(function(n){litKeys[n.essay]=1});
+  var lit=Object.keys(litKeys).length;
+  var h='<div class="home-intro">'+
+    '爸爸和儿子<b>分开读同一本书</b>，各自在页边写批注。孩子的手写批注由 AI 识别录入，爸爸的电子批注整理汇入，'+
+    '最后都挂回原文段落旁边——左边是鲁迅，右边是你们俩。<br>'+
+    '划选原文里的任意一句，可以：<b>写批注</b>（四大类：<span class="badge tucao">吐槽</span> '+
+    '<span class="badge question">疑问</span> <span class="badge kaodian">考点雷达</span> '+
+    '<span class="badge brilliant">神来之笔</span>）、<b>查字词</b>（拼音 + 释义）、<b>问AI</b>（回答以紫色卡片进入批注栏）。</div>';
+  h+='<div class="stats">'+
+    '<div class="stat"><div class="n all">'+notes.length+'</div><div class="l">总批注数</div></div>'+
+    '<div class="stat"><div class="n dad">'+nd+'</div><div class="l">'+esc(NAMES.dad)+'的批注</div></div>'+
+    '<div class="stat"><div class="n son">'+ns+'</div><div class="l">'+esc(NAMES.son)+'的批注</div></div>'+
+    (na?'<div class="stat"><div class="n" style="color:#534ab7">'+na+'</div><div class="l">AI 助读</div></div>':'')+
+    '<div class="stat"><div class="n">'+lit+'/'+ORDER.length+'</div><div class="l">已点亮文章</div></div></div>';
+  h+='<div class="essay-grid">';
+  ORDER.forEach(function(e,i){
+    var k=e[0],t=e[1],tag=e[2];
+    var en=notesOf(k), d=en.filter(function(n){return n.author==="dad"}).length,
+        s=en.filter(function(n){return n.author==="son"}).length;
+    h+='<a class="ecard" href="#essay='+k+'">'+
+      '<div class="no">'+(i+1)+'</div><h3>'+t+'</h3><div class="tag">'+tag+'</div>'+
+      '<div class="foot">'+(en.length?'<span class="lit">已点亮</span>':'<span>未开始</span>')+
+      '<span class="dot dad"></span>'+d+'<span class="dot son"></span>'+s+'</div></a>';
+  });
+  h+='</div>';
+  document.getElementById("home").innerHTML=h;
+}
+
+/* ================= 阅读页 ================= */
+var cur=null;
+function renderEssay(key,noScroll){
+  var data=window.ESSAY_TEXTS[key];if(!data)return renderHome();
+  cur=key;
+  var notes=notesOf(key);
+  var d=notes.filter(function(n){return n.author==="dad"}).length;
+  var s=notes.filter(function(n){return n.author==="son"}).length;
+  var aic=notes.filter(function(n){return n.author==="ai"}).length;
+  var metaIdx=ORDER.filter(function(e){return e[0]===key})[0];
+  var h='<button class="back" id="backHome">← 返回书架</button>'+
+    '<div class="essay-head"><h2>'+data.title+'</h2><div class="meta">'+
+    '<span>鲁迅 · 朝花夕拾</span><span>'+esc(metaIdx?metaIdx[2]:"")+'</span>'+
+    '<span class="cnt"><b class="dad">'+esc(NAMES.dad)+' '+d+'</b> · <b class="son">'+esc(NAMES.son)+' '+s+'</b>'+
+    (aic?' · <b style="color:#534ab7">AI '+aic+'</b>':'')+'</span>'+
+    '<span>悬停段落左侧「＋」可添加批注</span></div></div>';
+  data.paras.forEach(function(p,i){
+    var pn=notes.filter(function(n){return n.para===i});
+    h+='<div class="para-row" data-i="'+i+'">'+
+      '<div class="para'+(p.sign?" sign":"")+(p.t.indexOf("\n")>=0?" pre":"")+'" id="p-'+key+'-'+i+'"></div>'+
+      '<div class="notes">';
+    var pk=key+":"+i;
+    var openAll=!!EXPANDED_PARA[pk];
+    var show=openAll?pn:pn.slice(0,PARA_LIMIT);
+    pn.forEach(function(n,idx){
+      if(show.indexOf(n)<0)return;
+      var locatable=n.quote&&findQuote(p.t,n.quote)>=0;
+      h+=noteHtml(n,locatable?idx+1:null);
+    });
+    if(pn.length>PARA_LIMIT){
+      h+='<button class="more-btn" data-pk="'+pk+'">'+
+        (openAll?'收起':'还有 '+(pn.length-PARA_LIMIT)+' 条批注 · 展开')+'</button>';
+    }
+    h+='</div></div>';
+  });
+  var rd=document.getElementById("reader");
+  rd.innerHTML=h;
+  data.paras.forEach(function(p,i){
+    var pn=notes.filter(function(n){return n.para===i});
+    document.getElementById("p-"+key+"-"+i).innerHTML=paraHtml(p.t,pn);
+  });
+  document.getElementById("backHome").onclick=function(){location.hash=""};
+  bindNoteEvents(rd);
+  bindHoverLinks(rd);
+  document.getElementById("home").style.display="none";
+  rd.style.display="block";
+  if(!noScroll)window.scrollTo(0,0);
+}
+/* 长内容折叠：超过 CLIP 字先显示摘要 */
+function clipBlock(text,cls,id){
+  var long=text.length>CLIP, open=!!EXPANDED_NOTE[id];
+  var t=(long&&!open)?text.slice(0,CLIP)+"…":text;
+  var h='<div class="'+cls+(long&&!open?' clipped':'')+'">'+esc(t).replace(/\n/g,"<br>")+'</div>';
+  if(long)h+='<button class="showmore" data-id="'+esc(id)+'"'+(open?' data-collapse="1"':'')+'>'+
+    (open?'收起':'展开全文')+'</button>';
+  return h;
+}
+function noteHtml(n,no){
+  var rs=repliesOf(n);
+  var who=esc(NAMES[n.author]||(n.author==="ai"?"AI":n.author));
+  var body;
+  if(n.author==="ai"){
+    body=(n.quote?'<div class="q">「'+esc(n.quote)+'」</div>':'')+
+      '<div class="ask">问：'+esc(n.text)+'</div>'+
+      (n.answer
+        ? clipBlock(n.answer,"ans",n.id)
+        : '<div class="ans loading">AI 正在读这句话<span class="dots"><i></i><i></i><i></i></span></div>');
+  }else{
+    body=(n.quote?'<div class="q">「'+esc(n.quote)+'」</div>':'')+
+      clipBlock(n.text,"tx",n.id)+
+      (n.source&&n.source!=="网页录入"?'<div class="src">来自：'+esc(n.source)+'</div>':'');
+  }
+  var h='<div class="note '+n.author+'" data-id="'+esc(n.id)+'" data-para="'+n.para+'" title="点击定位到原文">'+
+    '<div class="nh">'+(no?'<span class="nnum '+n.author+'">'+no+'</span>':'')+
+    '<span class="who">'+who+'</span>'+
+    '<span class="badge '+n.type+'">'+(TYPES[n.type]||n.type)+'</span>'+
+    '<span class="when">'+fmtTime(n.time)+'</span></div>'+
+    body;
+  if(rs.length){
+    h+='<div class="replies">';
+    rs.forEach(function(r){
+      h+='<div class="reply '+r.author+'"><b>'+esc(NAMES[r.author]||r.author)+'</b>：'+esc(r.text)+
+        '<span class="rt">'+fmtTime(r.time)+'</span>'+
+        (r._local?'<button class="rdel" data-rid="'+esc(r.id)+'">删</button>':'')+'</div>';
+    });
+    h+='</div>';
+  }
+  var other=n.author==="son"?"dad":"son";
+  h+='<div class="nfoot"><button class="reply-btn">'+(rs.length?'继续回复':'回复')+'</button>'+
+    '<button class="del" title="删除这条批注">删</button></div>'+
+    '<div class="reply-box"><div class="who"><span>回复人</span>'+
+    '<button data-a="dad">'+esc(NAMES.dad)+'</button>'+
+    '<button data-a="son">'+esc(NAMES.son)+'</button></div>'+
+    '<textarea placeholder="接着这句话说点什么……"></textarea>'+
+    '<div class="rrow"><button class="cn">取消</button><button class="send">发送</button></div></div></div>';
+  return h;
+}
+function bindNoteEvents(root){
+  root.querySelectorAll(".note .del").forEach(function(b){
+    b.onclick=function(ev){
+      ev.stopPropagation();
+      var id=b.closest(".note").dataset.id;
+      if(!confirm("确定删除这条批注吗？"))return;
+      var li=LOCAL.map(function(x){return x.id}).indexOf(id);
+      if(li>=0){LOCAL.splice(li,1);jsave(LS_LOCAL,LOCAL)}
+      else{HIDDEN.push(id);jsave(LS_HIDDEN,HIDDEN)}
+      refresh();
+    };
+  });
+  root.querySelectorAll(".more-btn").forEach(function(b){
+    b.onclick=function(ev){
+      ev.stopPropagation();
+      var pk=b.dataset.pk;
+      if(EXPANDED_PARA[pk])delete EXPANDED_PARA[pk];else EXPANDED_PARA[pk]=1;
+      refresh();
+    };
+  });
+  root.querySelectorAll(".showmore").forEach(function(b){
+    b.onclick=function(ev){
+      ev.stopPropagation();
+      var id=b.dataset.id;
+      if(b.dataset.collapse)delete EXPANDED_NOTE[id];else EXPANDED_NOTE[id]=1;
+      refresh();
+    };
+  });
+  root.querySelectorAll(".note").forEach(function(card){
+    card.onclick=function(ev){
+      if(ev.target.closest(".reply-box,.replies,.reply-btn,.rdel,.del,.showmore"))return;
+      var para=card.dataset.para;
+      var el=document.getElementById("p-"+cur+"-"+para);
+      if(el){
+        var hl=el.querySelector(".hl");
+        (hl||el).scrollIntoView({behavior:"smooth",block:"center"});
+        el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+      }
+    };
+    /* 回复 */
+    var nid=card.dataset.id;
+    var note=allNotes().filter(function(x){return x.id===nid})[0];
+    var other=note&&note.author==="son"?"dad":"son";
+    var box=card.querySelector(".reply-box");
+    var ta=card.querySelector(".reply-box textarea");
+    var pick=other;
+    function paintWho(){
+      card.querySelectorAll(".who button").forEach(function(b){
+        b.className=(b.dataset.a===pick)?("on-"+pick):"";
+      });
+    }
+    paintWho();
+    card.querySelectorAll(".who button").forEach(function(b){
+      b.onclick=function(ev){ev.stopPropagation();pick=b.dataset.a;paintWho()};
+    });
+    card.querySelector(".reply-btn").onclick=function(ev){
+      ev.stopPropagation();
+      var open=box.classList.toggle("open");
+      if(open)ta.focus();
+    };
+    card.querySelector(".reply-box .cn").onclick=function(ev){
+      ev.stopPropagation();box.classList.remove("open");ta.value="";
+    };
+    card.querySelector(".reply-box .send").onclick=function(ev){
+      ev.stopPropagation();
+      var t=ta.value.trim();if(!t){ta.focus();return}
+      if(!LREPLIES[nid])LREPLIES[nid]=[];
+      LREPLIES[nid].push({id:uid(),author:pick,text:t,time:nowStr()});
+      jsave(LS_REPLIES,LREPLIES);
+      refresh();
+    };
+    card.querySelectorAll(".rdel").forEach(function(b){
+      b.onclick=function(ev){
+        ev.stopPropagation();
+        var rid=b.dataset.rid;
+        if(!confirm("删除这条回复？"))return;
+        LREPLIES[nid]=(LREPLIES[nid]||[]).filter(function(r){return r.id!==rid});
+        if(!LREPLIES[nid].length)delete LREPLIES[nid];
+        jsave(LS_REPLIES,LREPLIES);
+        refresh();
+      };
+    });
+  });
+}
+/* ================= 原文标注 ↔ 边栏批注 双向悬停联动 ================= */
+function bindHoverLinks(root){
+  function notesFor(idsStr){
+    var ids=(idsStr||"").split(",").filter(Boolean);
+    return ids.map(function(id){
+      return root.querySelector('.note[data-id="'+id+'"]');
+    }).filter(Boolean);
+  }
+  root.querySelectorAll(".hl[data-ids]").forEach(function(sp){
+    sp.addEventListener("mouseenter",function(){
+      notesFor(sp.dataset.ids).forEach(function(c){c.classList.add("hit")});
+    });
+    sp.addEventListener("mouseleave",function(){
+      notesFor(sp.dataset.ids).forEach(function(c){c.classList.remove("hit")});
+    });
+  });
+  root.querySelectorAll(".mk[data-ids]").forEach(function(sp){
+    sp.addEventListener("mouseenter",function(){
+      notesFor(sp.dataset.ids).forEach(function(c){c.classList.add("hit")});
+    });
+    sp.addEventListener("mouseleave",function(){
+      notesFor(sp.dataset.ids).forEach(function(c){c.classList.remove("hit")});
+    });
+  });
+  root.querySelectorAll(".note").forEach(function(card){
+    card.addEventListener("mouseenter",function(){
+      root.querySelectorAll(".hl[data-ids],.mk[data-ids]").forEach(function(sp){
+        if((sp.dataset.ids||"").split(",").indexOf(card.dataset.id)>=0)sp.classList.add("hit");
+      });
+    });
+    card.addEventListener("mouseleave",function(){
+      root.querySelectorAll(".hl.hit,.mk.hit").forEach(function(sp){sp.classList.remove("hit")});
+    });
+  });
+}
+
+/* ================= 划选工具条：批注 / 查字词 / 问AI ================= */
+var pendingSel=null;
+function hideSelBar(){var b=document.getElementById("selBar");if(b)b.style.display="none";pendingSel=null}
+document.addEventListener("mouseup",function(e){
+  if(!document.getElementById("overlay").classList.contains("hidden"))return;
+  if(e.target&&e.target.closest&&e.target.closest("#selBar"))return;
+  var sel=window.getSelection();
+  var text=sel?String(sel).trim():"";
+  var bar=document.getElementById("selBar");
+  if(!text||text.length<2||!sel.rangeCount){bar.style.display="none";pendingSel=null;return}
+  var node=sel.getRangeAt(0).startContainer;
+  var el=node.nodeType===1?node:node.parentElement;
+  var paraEl=el&&el.closest?el.closest(".para"):null;
+  if(!paraEl||!paraEl.id||paraEl.id.indexOf("p-"+cur+"-")!==0){
+    bar.style.display="none";pendingSel=null;return;
+  }
+  var r=sel.getRangeAt(0).getBoundingClientRect();
+  bar.style.display="flex";
+  bar.style.left=Math.max(80,r.left+r.width/2)+"px";
+  bar.style.top=Math.max(50,r.top)+"px";
+  pendingSel={text:text,para:+paraEl.id.split("-").pop(),essay:cur};
+});
+document.getElementById("selBar").addEventListener("mousedown",function(e){e.preventDefault()});
+document.querySelectorAll("#selBar button").forEach(function(b){
+  b.addEventListener("click",function(){
+    if(!pendingSel)return;
+    var ps=pendingSel,act=b.dataset.act;
+    hideSelBar();
+    window.getSelection().removeAllRanges();
+    if(act==="note")openAdd(ps.essay,ps.para,ps.text);
+    else if(act==="dict")openDict(ps.text);
+    else openAsk(ps.essay,ps.para,ps.text);
+  });
+});
+window.addEventListener("scroll",function(){if(pendingSel)hideSelBar()},{passive:true});
+
+/* ================= 添加批注 ================= */
+var draft=null;
+function openAdd(key,i,quote){
+  var data=window.ESSAY_TEXTS[key];
+  var p=data.paras[i];
+  var q=quote||p.t.replace(/\n/g," ").slice(0,60);
+  draft={key:key,para:i,author:"dad",type:"kaodian"};
+  var h='<h3>发一条批注</h3><div class="mh">《'+data.title+'》 · '+
+    (quote?'针对<b>你选中的这句话</b>':'针对整段（也可先在原文里划选句子）')+'</div>'+
+    '<label>谁在说话</label><div class="seg">'+
+    '<button id="mDad">'+esc(NAMES.dad)+'</button><button id="mSon">'+esc(NAMES.son)+'</button></div>'+
+    '<label>批注类型</label><div class="chips">';
+  Object.keys(TYPES).forEach(function(t){
+    h+='<button data-t="'+t+'"'+(t==="kaodian"?' class="on"':'')+'>'+TYPES[t]+' · '+TYPE_DESC[t]+'</button>';
+  });
+  h+='</div>'+
+    '<label>针对的原文（摘录，可改）</label><input type="text" id="mQuote" value="'+q.replace(/"/g,"&quot;")+'">'+
+    '<label>批注内容</label><textarea id="mText" placeholder="写点什么……吐槽也行，提问也行，发现考点更行"></textarea>'+
+    '<div class="btns"><button class="ok" id="mOk">挂到这一段</button><button class="cc" id="mCc">取消</button></div>';
+  var box=document.getElementById("modalBox");
+  box.innerHTML=h;
+  document.getElementById("overlay").classList.remove("hidden");
+  function pick(a){draft.author=a;
+    document.getElementById("mDad").className=(a==="dad"?"sel-dad":"");
+    document.getElementById("mSon").className=(a==="son"?"sel-son":"");}
+  pick("dad");
+  document.getElementById("mDad").onclick=function(){pick("dad")};
+  document.getElementById("mSon").onclick=function(){pick("son")};
+  box.querySelectorAll(".chips button").forEach(function(b){
+    b.onclick=function(){box.querySelectorAll(".chips button").forEach(function(x){x.className=""});
+      b.className="on";draft.type=b.dataset.t};
+  });
+  document.getElementById("mCc").onclick=closeModal;
+  document.getElementById("mOk").onclick=function(){
+    var text=document.getElementById("mText").value.trim();
+    if(!text){document.getElementById("mText").focus();return}
+    LOCAL.push({id:uid(),essay:draft.key,para:draft.para,author:draft.author,type:draft.type,
+      quote:document.getElementById("mQuote").value.trim(),text:text,time:nowStr(),source:"网页录入"});
+    jsave(LS_LOCAL,LOCAL);
+    closeModal();refresh();
+    var el=document.getElementById("p-"+draft.key+"-"+draft.para);
+    if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.classList.add("flash")}
+  };
+  setTimeout(function(){document.getElementById("mText").focus()},50);
+}
+function closeModal(){document.getElementById("overlay").classList.add("hidden")}
+
+/* ================= 查字词 ================= */
+var DICT={
+  "罕逢":"hǎn féng｜稀少地遇到。罕：少见；逢：遇到。",
+  "大抵":"dà dǐ｜大概；大都。表示推测或概括。",
+  "惘然":"wǎng rán｜失意的样子；心里好像失掉了什么东西似的。",
+  "忐忑":"tǎn tè｜心神不定，七上八下。",
+  "诧异":"chà yì｜觉得奇怪。",
+  "倜傥":"tì tǎng｜洒脱，不拘束。",
+  "人声鼎沸":"rén shēng dǐng fèi｜人声嘈杂，像水在锅里沸腾一样。",
+  "骂詈":"mà lì｜辱骂。",
+  "渊博":"yuān bó｜学识深广。",
+  "宿儒":"sù rú｜老成博学的读书人。宿：年老的、久于其事的。",
+  "和蔼":"hé ǎi｜态度温和，容易接近。",
+  "鉴略":"jiàn lüè｜《鉴略》，清代王仕云编的历史启蒙读物，旧时学童开蒙用书。",
+  "五猖会":"wǔ chāng huì｜旧时迎神赛会的一种，祭祀五通神，绍兴一带最盛。",
+  "迎神赛会":"yíng shén sài huì｜旧俗，用仪仗、鼓乐把神像迎出庙宇巡游，以祈福消灾。",
+  "吹都都":"chuī dū dū｜一种泥制小哨子，吹起来发出刺耳的声音。",
+  "明瓦":"míng wǎ｜用蛎壳磨成的半透明薄片，旧时用来做窗或船篷。",
+  "生书":"shēng shū｜没读过的课文。旧时私塾分「生书」（新课）与「熟书」（复习）。",
+  "对课":"duì kè｜旧时私塾里练习做对子（对联）的功课。",
+  "戒尺":"jiè chǐ｜旧时私塾先生用来责打学生的木尺。",
+  "三味书屋":"sān wèi shū wū｜鲁迅少年时读书的私塾，在绍兴。",
+  "拗过去":"niù guò qù｜这里指头向后仰、身体后倾的动作。拗读 niù，固执、不顺；读 ǎo 时指弯折。",
+  "油蛉":"yóu líng｜一种昆虫，鸣声细，俗称金铃子。",
+  "皂荚树":"zào jiá shù｜落叶乔木，结荚果，旧时用来洗衣。",
+  "桑椹":"sāng shèn｜桑树的果实，紫红色，可食。",
+  "美女蛇":"měi nǚ shé｜民间传说中夜里呼唤人名的蛇精，答应就会被吃掉。",
+  "何首乌":"hé shǒu wū｜多年生草本植物，根可入药，传说人形的能成仙。",
+  "覆盆子":"fù pén zi｜一种野果，像小草莓，酸甜。",
+  "长妈妈":"cháng mā ma｜鲁迅儿时的保姆，即阿长，《阿长与〈山海经〉》的主人公。",
+  "二十四孝图":"èr shí sì xiào tú｜旧时宣扬孝道的图画读本，鲁迅借它批判虚伪的封建孝道。",
+  "白无常":"bái wú cháng｜迷信传说中勾魂的鬼，穿白衣，戴高帽。",
+  "藤野先生":"téng yě xiān sheng｜鲁迅在日本仙台学医时的解剖学老师藤野严九郎。",
+  "范爱农":"fàn ài nóng｜鲁迅的朋友，辛亥革命前后的知识分子，结局凄凉。"
+};
+function openDict(term){
+  var key=String(term).replace(/[“”「」『』《》（）()、，。；：？！·\s]/g,"");
+  var hit=DICT[key]||null, exact=!!hit, best=null;
+  if(!hit){
+    Object.keys(DICT).forEach(function(w){
+      if(key.indexOf(w)>=0&&(!best||w.length>best.length))best=w;
+    });
+    if(best)hit=DICT[best];
+  }
+  var h='<h3>查字词</h3>';
+  if(hit){
+    var parts=hit.split("｜");
+    h+='<div class="dictword">'+esc(exact?term:best)+'</div>'+
+      '<div class="dictpy">'+esc(parts[0])+'</div>'+
+      '<div class="dictdef">'+esc(parts[1])+'</div>'+
+      (exact?'':'<div class="hint">你划选的文字里含有「'+esc(best)+'」，以上是它的释义</div>')+
+      '<div class="hint">本机示例词典 · 接入词典 API 后任意字词都能查</div>';
+  }else{
+    h+='<div class="dictword">'+esc(term.length>12?term.slice(0,12)+"…":term)+'</div>'+
+      '<div class="dictmiss">这一条暂未收录。<br><br>当前是本机示例词典，收了《朝花夕拾》里常见的字词。接入词典或大模型之后，任意字词的拼音和释义都能查。</div>';
+  }
+  h+='<div class="btns"><button class="ok" id="dOk">知道了</button></div>';
+  var box=document.getElementById("modalBox");
+  box.innerHTML=h;
+  document.getElementById("overlay").classList.remove("hidden");
+  document.getElementById("dOk").onclick=closeModal;
+}
+
+/* ================= 问 AI ================= */
+function openAsk(essayKey,para,quote){
+  var data=window.ESSAY_TEXTS[essayKey];
+  var h='<h3>问 AI</h3><div class="mh">《'+data.title+'》 · 针对你划选的这句话</div>'+
+    '<div class="askquote">「'+esc(quote)+'」</div>'+
+    '<div class="askbox"><textarea id="askTa" placeholder="问点什么，比如：这句话有什么言外之意？作者为什么这样写？"></textarea>'+
+    '<div class="askfoot"><div class="hint">回车发送 · Shift + 回车换行</div>'+
+    '<button class="send" id="askSend">发送</button></div></div>';
+  var box=document.getElementById("modalBox");
+  box.innerHTML=h;
+  document.getElementById("overlay").classList.remove("hidden");
+  function send(){
+    var ta=document.getElementById("askTa");
+    var q=ta.value.trim();
+    if(!q){ta.focus();return}
+    var id=uid();
+    LOCAL.push({id:id,essay:essayKey,para:para,author:"ai",type:"aiask",
+      quote:quote,text:q,answer:null,time:nowStr(),source:"AI"});
+    jsave(LS_LOCAL,LOCAL);
+    closeModal();
+    refresh();
+    setTimeout(function(){
+      var c=document.querySelector('.note[data-id="'+id+'"]');
+      if(c)c.scrollIntoView({behavior:"smooth",block:"center"});
+    },120);
+    mockAnswer(id,q,quote);
+  }
+  document.getElementById("askSend").onclick=send;
+  document.getElementById("askTa").onkeydown=function(e){
+    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}
+  };
+  setTimeout(function(){document.getElementById("askTa").focus()},60);
+}
+
+/* AI 回答的 mock 实现 —— 接入模型后替换 mockAnswer 内部即可 */
+function mockText(q,quote){
+  var qq=quote?("「"+quote.replace(/\n/g," ").slice(0,26)+"」"):"这句话";
+  if(/为什么|为何|怎么|咋|凭什么/.test(q)){
+    return qq+"出现在一个转折点上：前一段的情绪还在往上走，到这里被一句话按了下去。\n"+
+      "答这类问题有个套路：先找「变化」——人物前后心情、动作、语气有什么不同；再找「开关」——是谁、哪句话把变化按下去的。\n"+
+      "（示例回答。接入模型后，这里会针对你的问题给出具体分析）";
+  }
+  if(/意思|什么意思|释义|解释|是什么|啥/.test(q)){
+    return qq+"字面上写的是眼前的物和事，但从上下文看，它同时在写「我」的心情：表面写景，实际写心。\n"+
+      "读的时候可以把这句单独拎出来问自己：只按字面读，会漏掉什么？\n"+
+      "（示例回答。接入模型后，这里会是准确的释义与语境分析）";
+  }
+  if(/考点|考试|怎么答|答题|作用|手法/.test(q)){
+    return qq+"可以这样答：先概括写了什么（内容），再点出手法（对比、欲扬先抑、细节描写等），最后落到情感或主题。\n"+
+      "按「内容 → 手法 → 情感」三段写，考场上不容易漏点。\n"+
+      "（示例回答。接入模型后，这里会结合具体问法给出答题要点）";
+  }
+  return "好问题。"+qq+"值得停一停：把它放回整篇里看，它和开头、结尾各自是什么关系？\n"+
+    "先自己写一句答案，再往下读——带着问题读，比读完再回忆有效得多。\n"+
+    "（示例回答。接入模型后，这里会是针对你问题的完整回答）";
+}
+function mockAnswer(id,q,quote){
+  setTimeout(function(){
+    var n=null;
+    LOCAL.forEach(function(x){if(x.id===id)n=x});
+    if(!n)return;
+    n.answer=mockText(q,quote);
+    jsave(LS_LOCAL,LOCAL);
+    refresh();
+  },1500+Math.random()*1200);
+}
+/* 刷新页面后仍在等待的 AI 提问，继续补上回答 */
+function resumePendingAI(){
+  LOCAL.forEach(function(n){
+    if(n.author==="ai"&&!n.answer)mockAnswer(n.id,n.text,n.quote);
+  });
+}
+
+/* ================= 显示设置 ================= */
+function openSettings(){
+  var d=JSON.parse(JSON.stringify(SETT));
+  var h='<h3>显示设置</h3><div class="mh">正文、批注、回复分开调，改动即时在下方预览，点保存才生效</div>';
+  ["body","note","reply"].forEach(function(k){
+    h+='<label>'+FLABEL[k]+'</label><div class="setrow">'+
+      '<select data-k="'+k+'" data-p="font">'+
+      Object.keys(FONTS).map(function(f){
+        return '<option value="'+f+'"'+(d[k].font===f?" selected":"")+'>'+FONTS[f].n+'</option>';
+      }).join("")+'</select>'+
+      '<input type="range" data-k="'+k+'" data-p="size" min="'+FRANGE[k][0]+'" max="'+FRANGE[k][1]+
+      '" step="1" value="'+d[k].size+'">'+
+      '<span class="sv" data-k="'+k+'">'+d[k].size+'px</span></div>';
+  });
+  h+='<div class="pv" id="pvBox">'+
+      '<div class="para">我似乎从头上浇了一盆冷水。<span class="hl hl-dad">“给我读熟。背不出，就不准去看会。”</span>'+
+      '<span class="mk dad">1</span>但是，有什么法子呢？</div>'+
+      '<div class="note dad"><div class="nh"><span class="nnum dad">1</span><span class="who">'+esc(NAMES.dad)+'</span>'+
+      '<span class="badge kaodian">考点雷达</span><span class="when">11月15日 21:40</span></div>'+
+      '<div class="q">「给我读熟。背不出，就不准去看会。」</div>'+
+      '<div class="tx">先扬后抑：前一段还笑着跳着，这里一盆冷水浇下来。</div>'+
+      '<div class="replies"><div class="reply son"><b>'+esc(NAMES.son)+'</b>：所以扫兴这事，花多少钱都补不回来。'+
+      '<span class="rt">11月16日 20:40</span></div></div></div></div>';
+  h+='<div class="btns"><button class="ok" id="sOk">保存并应用</button><button class="cc" id="sCc">取消</button></div>';
+  var box=document.getElementById("modalBox");
+  box.innerHTML=h;
+  document.getElementById("overlay").classList.remove("hidden");
+  function preview(){
+    var pv=document.getElementById("pvBox");
+    ["body","note","reply"].forEach(function(k){
+      pv.style.setProperty("--font-"+k,FONTS[d[k].font].v);
+      pv.style.setProperty("--fs-"+k,d[k].size+"px");
+    });
+  }
+  preview();
+  box.querySelectorAll("select[data-p=font]").forEach(function(sel){
+    sel.onchange=function(){d[sel.dataset.k].font=sel.value;preview()};
+  });
+  box.querySelectorAll("input[data-p=size]").forEach(function(rg){
+    rg.oninput=function(){
+      var k=rg.dataset.k;
+      d[k].size=+rg.value;
+      box.querySelector('.sv[data-k="'+k+'"]').textContent=rg.value+"px";
+      preview();
+    };
+  });
+  document.getElementById("sCc").onclick=closeModal;
+  document.getElementById("sOk").onclick=function(){
+    SETT=d;jsave(LS_SETTINGS,SETT);applySettings();closeModal();
+  };
+}
+
+/* ================= 昵称 & 导出 ================= */
+function openNames(){
+  var h='<h3>改个称呼</h3><div class="mh">显示在每条批注上的名字，只存在这台电脑的浏览器里</div>'+
+    '<div class="two-input"><div><label>爸爸的昵称</label><input type="text" id="nDad" value="'+esc(NAMES.dad)+'"></div>'+
+    '<div><label>孩子的昵称</label><input type="text" id="nSon" value="'+esc(NAMES.son)+'"></div></div>'+
+    '<div class="btns"><button class="ok" id="nOk">保存</button><button class="cc" id="nCc">取消</button></div>';
+  var box=document.getElementById("modalBox");box.innerHTML=h;
+  document.getElementById("overlay").classList.remove("hidden");
+  document.getElementById("nCc").onclick=closeModal;
+  document.getElementById("nOk").onclick=function(){
+    NAMES.dad=document.getElementById("nDad").value.trim()||"爸爸";
+    NAMES.son=document.getElementById("nSon").value.trim()||"儿子";
+    jsave(LS_NAMES,NAMES);closeModal();refresh()};
+}
+function exportJson(){
+  var notes=allNotes().sort(function(a,b){return a.time<b.time?-1:1}).map(function(n){
+    var c={};for(var k in n)c[k]=n[k];
+    var rs=repliesOf(n);
+    if(rs.length){
+      c.replies=rs.map(function(r){
+        var x={};for(var k in r)x[k]=r[k];
+        delete x._local;return x;
+      });
+    }
+    return c;
+  });
+  var blob=new Blob([JSON.stringify({book:"朝花夕拾·共读批注",exported:nowStr(),count:notes.length,
+    names:NAMES,notes:notes},null,2)],{type:"application/json"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="朝花夕拾共读批注备份_"+nowStr().slice(0,10).replace(/-/g,"")+".json";
+  a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ================= 路由 ================= */
+function route(){
+  var m=/^#essay=(\w+)$/.exec(location.hash||"");
+  if(m&&window.ESSAY_TEXTS[m[1]]){renderEssay(m[1])}
+  else{cur=null;document.getElementById("reader").style.display="none";
+    document.getElementById("home").style.display="block";renderHome()}
+}
+function refresh(){
+  if(cur){var y=window.scrollY;renderEssay(cur,true);window.scrollTo(0,y)}
+  else renderHome();
+}
+window.addEventListener("hashchange",route);
+document.getElementById("btnDisplay").onclick=openSettings;
+document.getElementById("btnNames").onclick=openNames;
+document.getElementById("btnExport").onclick=exportJson;
+document.getElementById("overlay").addEventListener("click",function(e){if(e.target===this)closeModal()});
+route();
+resumePendingAI();
+</script>
+</body>
+</html>

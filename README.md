@@ -1,61 +1,61 @@
 # reading-together
 
-Parent-child co-reading annotations for Lu Xun's *Dawn Blossoms Plucked at Dusk* (《朝花夕拾》).
+鲁迅《朝花夕拾》父子共读批注应用。
 
-A dependency-free single-page app: the full text sits in the centre, and every note is pinned to the exact sentence it was written on — one column of Lu Xun, one column of father and son.
+零依赖的单页应用：全文居中，每一条批注都锚定在它被写下的那句话旁边——左边是鲁迅，右边是你们俩。
 
-## Background
+## 背景
 
-The child reads the paper book (no electronic devices allowed at school); the parent reads a digital edition. Each annotates in their own way:
+孩子读纸质书（学校不允许带电子设备），爸爸读电子版，各自用自己的方式在书页边写批注：
 
-- the child's handwriting is photographed, OCR'd into structured notes;
-- the parent's e-reader highlights are exported and merged in the same way;
-- both streams land in one page, where every note keeps its author, type and timestamp.
+- 孩子的手写批注拍照后经 OCR 识别，整理成结构化数据；
+- 爸爸在阅读软件里的批注导出后，以同样的方式汇入；
+- 两路批注最终都落到同一个页面上，每条都带着作者、类型和时间。
 
-Notes are meant to stay readable years later, so the archive layer (`danmaku_data.js`) is the source of truth and the browser layer is just a scratchpad on top of it.
+这些批注是打算留很多年再翻看的，所以档案层（`danmaku_data.js`）才是数据的正本，浏览器本地存储只是它上面的一层草稿纸。
 
-## Features
+## 功能
 
-- **Sentence-level margin notes** — select any sentence in the text, annotate it; the sentence is highlighted in place (father blue, son orange, both on the same sentence amber, AI violet), with a numbered marker matching the card in the side column.
-- **Two-way hover sync** — hovering a highlighted sentence lights up its card, and vice versa.
-- **Selection toolbar** — annotate / look up a word (pinyin + definition) / ask AI.
-- **Threaded replies** — every note can be replied to, so the two readers can talk back and forth under the same sentence.
-- **Auto-collapse** — a paragraph shows at most 2 notes by default; long note bodies are clipped to 120 characters. Keeps the text from being pushed apart.
-- **Display settings** — font family and size are configurable independently for body text, notes and replies, with a live preview before saving.
-- **Backup export** — everything (archive + local notes + replies) exports to JSON.
+- **句级批注** —— 在原文里划选任意一句即可批注；被批注的句子在原文中就地高亮（爸爸蓝、儿子橙、同句重叠琥珀、AI 紫），并带编号小签，与右侧卡片一一对位。
+- **双向悬停联动** —— 悬停原文里的高亮句，对应卡片浮起；悬停卡片，原文句子加深。
+- **划选工具栏** —— 批注 / 查字词（拼音 + 释义）/ 问 AI。
+- **批注可回复** —— 每条批注下都能接着聊，父子在同一句话下你来我往。
+- **自动折叠** —— 同一段落默认最多显示 2 条批注，单条内容超过 120 字折叠为摘要，避免把正文撑开。
+- **显示设置** —— 正文、批注、回复三处的字体与字号可分别调整，弹窗内实时预览，保存后才生效。
+- **备份导出** —— 档案层 + 本地批注 + 回复合并导出为 JSON。
 
-## Run
+## 运行
 
-Open `index.html` in a browser. No build step, no server, no dependencies.
+用浏览器打开 `index.html` 即可。无构建步骤、无服务器、无依赖。
 
-Data is persisted in `localStorage`; `texts.js` and `danmaku_data.js` are loaded as plain scripts (not fetched) so the app also works from `file://`.
+数据保存在 `localStorage` 里；`texts.js` 和 `danmaku_data.js` 以普通脚本方式加载（不走 fetch），因此从 `file://` 直接打开也能正常工作。
 
-## Files
+## 文件
 
-| File | Purpose |
+| 文件 | 作用 |
 | --- | --- |
-| `index.html` | The whole app: layout, styles, state and interactions. |
-| `texts.js` | Full text of the 12 pieces (preface, 10 essays, postscript), split into paragraphs. Public domain, sourced from Wikisource, converted to simplified Chinese. |
-| `danmaku_data.js` | The note archive. This is the file AI/OCR imports are appended to. |
-| `tmp_fetch/` | Raw wikitext and `build_texts.py`, the script that regenerates `texts.js`. |
+| `index.html` | 整个应用：结构、样式、状态与交互 |
+| `texts.js` | 全书 12 篇（小引 + 10 篇正文 + 后记）的段落化全文。公有领域文本，取自维基文库，已转为简体 |
+| `danmaku_data.js` | 批注档案层。AI / OCR 录入的新批注就追加在这个文件里 |
+| `tmp_fetch/` | 抓取的原始 wikitext 与 `build_texts.py`，用于重新生成 `texts.js` |
 
-## Data format
+## 数据格式
 
-Every note is one object in `window.DANMAKU_ARCHIVE`. Fields:
+档案层中每条批注是 `window.DANMAKU_ARCHIVE` 里的一个对象，字段如下：
 
-| Field | Type | Notes |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `id` | string | Unique, e.g. `dm_20261116_201500_ab12`. |
-| `essay` | string | Essay key — see the list below. |
-| `para` | number | Index into that essay's `paras` array in `texts.js` (0-based). |
-| `author` | `"dad"` \| `"son"` \| `"ai"` | `ai` entries are created in-app by the “ask AI” action. |
-| `type` | `"tucao"` \| `"question"` \| `"kaodian"` \| `"brilliant"` \| `"aiask"` | Complaint / question / exam-point radar / stroke of genius / AI reading aid. |
-| `quote` | string | **Must be a contiguous substring of that paragraph's text** — it is used to locate and highlight the sentence. Empty string means the note refers to the whole paragraph. |
-| `text` | string | Note body. For `author: "ai"` this is the user's question. |
-| `answer` | string | Only for `author: "ai"`. The model's answer; `null` renders a pending state. |
-| `time` | string | `YYYY-MM-DD HH:mm`. |
-| `source` | string | e.g. `纸质手写OCR`, `电子阅读器`, `网页录入`, `AI`. |
-| `replies` | array | Optional. `{ id, author, text, time }`, oldest first. |
+| `id` | string | 唯一标识，如 `dm_20261116_201500_ab12` |
+| `essay` | string | 文章 key，见下方列表 |
+| `para` | number | 该篇 `paras` 数组中的段落下标（从 0 起） |
+| `author` | `"dad"` \| `"son"` \| `"ai"` | `ai` 为应用内「问 AI」生成的条目 |
+| `type` | `"tucao"` \| `"question"` \| `"kaodian"` \| `"brilliant"` \| `"aiask"` | 吐槽 / 疑问 / 考点雷达 / 神来之笔 / AI 助读 |
+| `quote` | string | **必须是该段落原文中连续的一段文字**，用于定位并高亮句子；空字符串表示针对整段 |
+| `text` | string | 批注内容。`author` 为 `ai` 时这里是用户提的问题 |
+| `answer` | string | 仅 `author` 为 `ai` 时使用，为模型回答；`null` 时渲染为等待状态 |
+| `time` | string | 格式 `YYYY-MM-DD HH:mm` |
+| `source` | string | 来源，如 `纸质手写OCR`、`电子阅读器`、`网页录入`、`AI` |
+| `replies` | array | 可选。`{ id, author, text, time }`，按时间正序 |
 
 ```js
 {
@@ -65,40 +65,40 @@ Every note is one object in `window.DANMAKU_ARCHIVE`. Fields:
   "author": "dad",
   "type": "kaodian",
   "quote": "“给我读熟。背不出，就不准去看会。”",
-  "text": "Note how Lu Xun never complains outright — the mood collapses through contrast alone.",
+  "text": "注意鲁迅写扫兴从不直接骂，全靠心情对比：前一段还「笑着跳着」，这里一盆冷水浇下来。",
   "time": "2026-11-15 21:40",
   "source": "示例批注",
   "replies": [
-    { "id": "rp_ex_001", "author": "son", "text": "So the love is real, the delivery is what stings?", "time": "2026-11-16 20:40" }
+    { "id": "rp_ex_001", "author": "son", "text": "所以父亲的爱是真的，但表达方式很扫兴？", "time": "2026-11-16 20:40" }
   ]
 }
 ```
 
-Essay keys: `xiaoyin`, `goumaoshu`, `achang`, `ershisi`, `wuchanghui`, `wuchang`, `baicaoyuan`, `fudebing`, `suoji`, `tengye`, `fanainong`, `houji`.
+文章 key 列表：`xiaoyin`（小引）、`goumaoshu`（狗·猫·鼠）、`achang`（阿长与《山海经》）、`ershisi`（二十四孝图）、`wuchanghui`（五猖会）、`wuchang`（无常）、`baicaoyuan`（从百草园到三味书屋）、`fudebing`（父亲的病）、`suoji`（琐记）、`tengye`（藤野先生）、`fanainong`（范爱农）、`houji`（后记）。
 
-Because `quote` must match the source text exactly, always copy it from `texts.js` rather than retyping it. Notes whose `quote` cannot be located still render in the side column, but the sentence is not highlighted.
+因为 `quote` 必须与原文逐字一致，摘录请直接从 `texts.js` 里复制，不要手打。定位不到的批注仍会显示在右侧栏，只是原文中不会高亮。
 
-## Two data layers
+## 双层数据
 
-| Layer | Where | Editable in-app |
+| 层 | 位置 | 是否可在应用内编辑 |
 | --- | --- | --- |
-| Archive | `danmaku_data.js` (committed) | No — deletions are recorded as hidden IDs |
-| Local | `localStorage` under `rtz_local_v1`, `rtz_replies_v1`, `rtz_hidden_v1`, `rtz_settings_v1`, `rtz_names_v1` | Yes |
+| 档案层 | `danmaku_data.js`（随仓库提交） | 否——删除操作记录为隐藏 id |
+| 本地层 | `localStorage`：`rtz_local_v1`、`rtz_replies_v1`、`rtz_hidden_v1`、`rtz_settings_v1`、`rtz_names_v1` | 是 |
 
-Imported notes go into the archive layer; anything created in the browser stays local until it is exported and merged.
+导入的批注写进档案层；在浏览器里新建的内容先留在本地，导出后再合并回档案。
 
-## Connecting a real LLM
+## 接入真实 LLM
 
-`mockAnswer()` in `index.html` is the only integration point. It currently fills `note.answer` with canned text after a short delay; replace the body with a real request (inputs: the user's question `q` and the selected sentence `quote`) and the rest — pending state, storage, rendering, resume-on-reload — keeps working unchanged.
+`index.html` 里的 `mockAnswer()` 是唯一的接入点。它目前用定时器填入一段预设回答；把它内部换成真实请求即可（入参：用户问题 `q`、选中的原文 `quote`），等待状态、存储、渲染、刷新后续答等逻辑都不需要改动。
 
-Do not put an API key in this repository: the app is fully client-side, so any key shipped here is public. Use a server-side proxy or a hosted function instead.
+不要把 API key 放进这个仓库：应用完全跑在客户端，任何提交进代码的 key 都等于公开。请走服务端代理或托管函数。
 
-## Status
+## 当前状态
 
-Working MVP: reading, notes, replies, word lookup (32 built-in entries), mock AI, display settings, export.
+已可用：阅读、批注、回复、查字词（内置 32 条）、AI 问答（mock）、显示设置、导出备份。
 
-Not yet: real LLM, handwritten note images attached to cards, side-by-side father/son comparison view, JSON import, per-essay progress tracking.
+尚未实现：真实 LLM、批注卡片附手写原图、父子双栏对照视图、JSON 导入、按篇阅读进度。
 
-## Text source
+## 文本来源
 
-Lu Xun (1881–1936). The text is in the public domain; it was retrieved from Chinese Wikisource and cleaned by `tmp_fetch/build_texts.py` (template stripping, traditional → simplified conversion).
+鲁迅（1881—1936），作品已进入公有领域。文本取自中文维基文库，由 `tmp_fetch/build_texts.py` 清洗（去除模板、内链标记，繁体转简体）。

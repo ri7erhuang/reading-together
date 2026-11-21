@@ -54,16 +54,26 @@ export async function* streamChat({ messages, temperature = 0.6, maxTokens = 700
   yield* realStream(cfg, messages, temperature, maxTokens, userId, purpose, signal);
 }
 
+/** 只有智谱系接口支持 thinking 字段，发给 OpenAI 等严格网关会直接 400 */
+function supportsThinking(cfg) {
+  return /z\.ai|bigmodel|zhipu/i.test(cfg.base || '') || /^glm/i.test(cfg.model || '');
+}
+
 async function* realStream(cfg, messages, temperature, maxTokens, userId, purpose, outerSignal) {
   const timeout = AbortSignal.timeout(120000);
   const signal = outerSignal && AbortSignal.any ? AbortSignal.any([timeout, outerSignal]) : timeout;
+  const body = {
+    model: cfg.model, messages, stream: true, temperature, max_tokens: maxTokens,
+    stream_options: { include_usage: true }   // 没有它流式响应通常不回 usage，token 统计会一直是 0
+  };
+  if (supportsThinking(cfg)) body.thinking = { type: 'disabled' };
   const r = await fetch(cfg.base + '/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + cfg.key
     },
-    body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature, max_tokens: maxTokens, thinking: { type: 'disabled' } }),
+    body: JSON.stringify(body),
     signal
   });
   if (!r.ok || !r.body) {
@@ -91,10 +101,12 @@ async function* realStream(cfg, messages, temperature, maxTokens, userId, purpos
 export async function chatOnce({ messages, temperature = 0.4, maxTokens = 500, userId = '', purpose = 'dict' }) {
   const cfg = llmConfig();
   if (!cfg.enabled) return null;
+  const body = { model: cfg.model, messages, stream: false, temperature, max_tokens: maxTokens };
+  if (supportsThinking(cfg)) body.thinking = { type: 'disabled' };
   const r = await fetch(cfg.base + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key },
-    body: JSON.stringify({ model: cfg.model, messages, stream: false, temperature, max_tokens: maxTokens, thinking: { type: 'disabled' } }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(60000)
   });
   if (!r.ok) {

@@ -10,7 +10,8 @@ import { initSelectionBar, resetSelectionUi } from './reader/actions.js';
 
 let chapterIO = null;
 let currentBookId = null;
-let pendingLoads = new Map();
+let renderSeq = 0;                       // 用于丢弃过期的导航/加载结果
+let pendingLoads = new Map();            // "bookId:chapterIdx" -> Promise
 let progress = null;
 
 installReaderHooks();
@@ -20,15 +21,20 @@ bindPageLifecycle();
 /* ---------------- 入口 ---------------- */
 
 export async function renderReader(bookId, opts = {}) {
+  const seq = ++renderSeq;
+
   flushProgress();
   abortAll();
   resetSelectionUi();
 
   const meta = await api('/api/books/' + encodeURIComponent(bookId));
-  if (currentBookId !== bookId) {
-    resetBookState();
-    currentBookId = bookId;
-  }
+  if (seq !== renderSeq) return;         // 期间已经切到别的书
+
+  // 每次进入都重建：同一本书二次进入时必须清空，否则骨架是新的、缓存却认为已加载
+  resetBookState();
+  pendingLoads.clear();
+  currentBookId = bookId;
+
   state.book = meta.book;
   state.chapters = meta.chapters || [];
   state.notes = (meta.notes || []).map((n) => ({ ...n, replies: n.replies || [] }));
@@ -37,8 +43,16 @@ export async function renderReader(bookId, opts = {}) {
 
   paint();
   const startCh = chapterOfPara(progress && progress.paraIdx);
-  await ensureChapter(startCh ?? (state.chapters[0] ? state.chapters[0].idx : 0));
-  if (opts.restoreProgress !== false) await restoreProgress();
+  await ensureChapter(startCh ?? (state.chapters[0] ? state.chapters[0].idx : 0), seq);
+  if (seq !== renderSeq) return;
+  if (opts.restoreProgress !== false) await restoreProgress(seq);
+}
+
+/** 离开阅读页时调用：中止所有流并保存进度 */
+export function leaveReader() {
+  abortAll();
+  flushProgress();
+  resetSelectionUi();
 }
 
 /* ---------------- 骨架 ---------------- */
@@ -68,13 +82,13 @@ function paint() {
 
   const root = document.getElementById('reader');
   root.innerHTML = h;
-  document.getElementById('backHome').onclick = () => { flushProgress(); location.hash = ''; };
+  document.getElementById('backHome').onclick = () => { location.hash = ''; };
 
   const toc = document.getElementById('tocSel');
   if (toc) {
     toc.onchange = async () => {
       const idx = Number(toc.value);
-      await ensureChapter(idx);
+      await ensureChapter(idx, renderSeq);
       const sec = document.getElementById('ch-' + idx);
       if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
@@ -83,6 +97,10 @@ function paint() {
   setupChapterObserver();
   resetProgress();
   hooks.onActivePara = syncToc;
+  hooks.scrollToNote = (id) => {
+    const card = document.querySelector('.note[data-id="' + id + '"]');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 }
 
 /* ---------------- 懒加载 ---------------- */
@@ -91,38 +109,48 @@ function setupChapterObserver() {
   if (chapterIO) chapterIO.disconnect();
   chapterIO = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (e.isIntersecting) ensureChapter(Number(e.target.dataset.ch));
+      if (e.isIntersecting) ensureChapter(Number(e.target.dataset.ch), renderSeq);
     }
-  }, { rootMargin: '1200px 0px' });
+  }, { rootMargin: '400px 0px' });   // 未加载章节有占位高度，提前量不用给太大
   document.querySelectorAll('.chapter').forEach((sec) => chapterIO.observe(sec));
 }
 
-function ensureChapter(idx) {
+function ensureChapter(idx, seq) {
   if (idx == null || Number.isNaN(idx)) return Promise.resolve();
+  const bookId = state.book && state.book.id;
+  if (!bookId) return Promise.resolve();
   if (state.loadedChapters.has(idx)) return Promise.resolve();
-  if (pendingLoads.has(idx)) return pendingLoads.get(idx);
+
+  const key = bookId + ':' + idx;
+  if (pendingLoads.has(key)) return pendingLoads.get(key);
 
   const body = document.querySelector('.chapter-body[data-ch="' + idx + '"]');
   const ch = state.chapters.find((c) => c.idx === idx);
   if (!body || !ch) return Promise.resolve();
 
   body.innerHTML = '<div class="chapter-loading">正在加载…</div>';
-  const task = api('/api/books/' + encodeURIComponent(state.book.id) + '/chapters/' + idx + '/paras')
+  const task = api('/api/books/' + encodeURIComponent(bookId) + '/chapters/' + idx + '/paras')
     .then((d) => {
+      // 响应回来时可能已经切书，直接丢弃
+      if (seq !== renderSeq || !state.book || state.book.id !== bookId) return;
+      if (!document.contains(body)) return;
       for (const p of d.paras) state.paras.set(p.i, p);
       state.loadedChapters.add(idx);
+      body.classList.add('loaded');
       body.innerHTML = chapterBodyHtml(ch, state.paras);
       bindChapter(body);
     })
     .catch((e) => {
+      if (seq !== renderSeq) return;
+      if (!document.contains(body)) return;
       body.innerHTML = '<div class="chapter-loading">这一章加载失败：' + esc(e.message) +
         ' <button class="retry-load">重试</button></div>';
       const btn = body.querySelector('.retry-load');
-      if (btn) btn.onclick = () => { btn.disabled = true; ensureChapter(idx); };
+      if (btn) btn.onclick = () => { btn.disabled = true; ensureChapter(idx, renderSeq); };
     })
-    .finally(() => pendingLoads.delete(idx));
+    .finally(() => pendingLoads.delete(key));
 
-  pendingLoads.set(idx, task);
+  pendingLoads.set(key, task);
   return task;
 }
 
@@ -134,13 +162,30 @@ function chapterOfPara(paraIdx) {
   return ch ? ch.idx : null;
 }
 
-async function restoreProgress() {
+/**
+ * 恢复进度：必须先把目标章之前的章节都加载出来，否则前面的占位高度会让定位落空。
+ * 加载完再滚动一次，防止后到的内容把目标行顶走。
+ */
+async function restoreProgress(seq) {
   if (!progress || !progress.paraIdx) return;
+  const target = chapterOfPara(progress.paraIdx);
+  if (target == null) return;
+  const targetPos = state.chapters.findIndex((c) => c.idx === target);
+  if (targetPos < 0) return;
+
+  for (let i = 0; i <= targetPos; i++) {
+    if (seq !== renderSeq) return;
+    await ensureChapter(state.chapters[i].idx, seq);
+  }
+
   const row = document.querySelector('.para-row[data-i="' + progress.paraIdx + '"]');
   if (!row) return;
   await new Promise((r) => requestAnimationFrame(r));
   row.scrollIntoView({ block: 'start' });
   setActivePara(progress.paraIdx);
+  setTimeout(() => {
+    if (seq === renderSeq && document.contains(row)) row.scrollIntoView({ block: 'start' });
+  }, 300);
 }
 
 /** 目录跟着阅读位置走 */

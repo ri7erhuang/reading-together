@@ -3,7 +3,7 @@ import { api, session } from '../../api.js';
 import { toast } from '../../ui.js';
 import { state, hooks, noteById, removeNoteLocal } from './state.js';
 import { paraRowHtml } from './render.js';
-import { observeParaRow } from './progress.js';
+import { observeParaRow, unobserveParaRow } from './progress.js';
 import { retryAsk } from './ai.js';
 import { openAdd } from './actions.js';
 
@@ -12,6 +12,18 @@ export function repaintPara(i) {
   const row = document.querySelector('.para-row[data-i="' + i + '"]');
   const p = state.paras.get(i);
   if (!row || !p) return;
+
+  // 保留正在编辑的回复草稿（重绘会把 textarea 清空）
+  const drafts = [];
+  row.querySelectorAll('.note').forEach((card) => {
+    const box = card.querySelector('.reply-box');
+    const ta = card.querySelector('.reply-box textarea');
+    if (box && box.classList.contains('open') && ta && ta.value.trim()) {
+      drafts.push({ id: card.dataset.id, value: ta.value });
+    }
+  });
+
+  unobserveParaRow(row);
   const holder = document.createElement('div');
   holder.innerHTML = paraRowHtml(p);
   const next = holder.firstElementChild;
@@ -19,6 +31,17 @@ export function repaintPara(i) {
   row.replaceWith(next);
   bindParaRow(next);
   observeParaRow(next);
+
+  drafts.forEach((d) => {
+    const card = next.querySelector('.note[data-id="' + d.id + '"]');
+    if (!card) return;
+    const box = card.querySelector('.reply-box');
+    const ta = card.querySelector('textarea');
+    if (box && ta) {
+      box.classList.add('open');
+      ta.value = d.value;
+    }
+  });
 }
 
 function bindHover(row) {
@@ -67,6 +90,13 @@ function bindNoteCard(card, paraIdx) {
     del.onclick = async (ev) => {
       ev.stopPropagation();
       if (!confirm('确定删除这条批注吗？')) return;
+      // 正在流式回答时先中止，否则 onDone 会把删掉的卡片重新画回来
+      if (state.streaming.has(nid)) {
+        const abort = state.aborters.get(nid);
+        if (abort) { try { abort(); } catch {} }
+        state.aborters.delete(nid);
+        state.streaming.delete(nid);
+      }
       try {
         await api('/api/notes/' + nid, { method: 'DELETE' });
         removeNoteLocal(nid);
@@ -160,6 +190,22 @@ export function bindParaRow(row) {
 
   row.querySelectorAll('.retry').forEach((b) => {
     b.onclick = (ev) => { ev.stopPropagation(); retryAsk(b.dataset.id); };
+  });
+
+  // 编号小签可点击：展开该段并滚到对应卡片（被折叠的批注也能从正文找到）
+  row.querySelectorAll('.mk[data-id]').forEach((sp) => {
+    sp.onclick = (ev) => {
+      ev.stopPropagation();
+      const id = sp.dataset.id;
+      if (!state.expandedPara.has(i)) {
+        state.expandedPara.add(i);
+        repaintPara(i);
+      }
+      setTimeout(() => {
+        const card = document.querySelector('.note[data-id="' + id + '"]');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 0);
+    };
   });
 
   row.querySelectorAll('.note').forEach((card) => bindNoteCard(card, i));

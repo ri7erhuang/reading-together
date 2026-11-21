@@ -70,10 +70,11 @@ export function removeNoteLocal(id) {
   rebuildIndex();
 }
 
-/** 切书/离开页面时中止所有进行中的流 */
+/** 切书/离开页面时中止所有进行中的流，并清掉「正在流式」标记 */
 export function abortAll() {
   for (const abort of state.aborters.values()) {
     try { abort(); } catch {}
   }
   state.aborters.clear();
+  state.streaming.clear();
 }

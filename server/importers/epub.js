@@ -40,7 +40,8 @@ const dirOf = (p) => {
 };
 
 function attr(tag, name) {
-  const m = new RegExp(name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(tag);
+  // 加词边界，避免把 data-id / data-href 误当成 id / href
+  const m = new RegExp('(?:^|\\s)' + name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(tag);
   return m ? (m[2] != null ? m[2] : m[3]) : '';
 }
 

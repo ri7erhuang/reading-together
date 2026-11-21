@@ -35,6 +35,12 @@ export function observeParaRow(row) {
   ensureObserver().observe(row);
 }
 
+/** 段落行被局部重绘替换前调用，避免观察器里堆积失效节点 */
+export function unobserveParaRow(row) {
+  if (!observer || !row) return;
+  try { observer.unobserve(row); } catch {}
+}
+
 export function resetProgress() {
   if (observer) observer.disconnect();
   ensureObserver();

@@ -302,7 +302,9 @@ td .mini{font-size:11px;color:var(--ink3);margin-top:3px;line-height:1.5}
 
 /* ---------- 章节懒加载 ---------- */
 .chapter{display:block}
-.chapter-body{min-height:60px}
+/* 未加载的章节先占住整屏高度，避免一次性把所有章节都推进观察区 */
+.chapter-body{min-height:70vh}
+.chapter-body.loaded{min-height:0}
 .chapter-loading{padding:20px 0;text-align:center;color:var(--ink3);font-size:14px}
 .chapter-loading .retry-load{margin-left:8px;border:1px solid var(--line);background:var(--card);
   border-radius:7px;padding:3px 12px;font-size:12px;color:var(--ink2);font-family:inherit}

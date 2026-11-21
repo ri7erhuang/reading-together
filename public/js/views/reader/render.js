@@ -7,8 +7,8 @@ export const PARA_LIMIT = 2;
 export const CLIP = 140;
 
 /**
- * 定位摘录：优先用后端算好的 offset（带校验），失败再退回字符串匹配。
- * 后端存 offset 就是为了避免两套规则不一致。
+ * 定位摘录：优先用后端算好的 offset（整段校验），对不上再退回字符串匹配。
+ * 只比对前两个字会误判——同一段里常有重复用词。
  */
 export function locate(text, note) {
   const t = String(text || '');
@@ -17,13 +17,15 @@ export function locate(text, note) {
   const { offset, qlen } = note;
   if (Number.isInteger(offset) && Number.isInteger(qlen) && qlen > 0) {
     const seg = t.slice(offset, offset + qlen);
-    // 用前两个字校验偏移是否仍然对得上（书被重新导入时可能失效）
-    const head = q.slice(0, 2).replace(/^[“「『《（(]+/, '');
-    if (seg && (head === '' || seg.includes(head) || seg.startsWith(head))) {
-      return { s: offset, e: offset + qlen };
-    }
+    if (seg && sameText(seg, q)) return { s: offset, e: offset + qlen };
   }
   return findQuote(t, q);
+}
+
+/** 比较两段文字，忽略引号、括号与空白差异 */
+function sameText(a, b) {
+  const norm = (s) => String(s || '').replace(/[“”「」『』《》（）()\s]/g, '');
+  return norm(a) === norm(b);
 }
 
 /** 把段落的批注渲染成句级高亮（重叠区间合并，同句多人取琥珀/AI 紫） */
@@ -107,13 +109,13 @@ export function noteHtml(n, no) {
     '<div class="nh">' + (no ? '<span class="nnum ' + n.author + '">' + no + '</span>' : '') +
     '<span class="who">' + esc(who) + '</span>' +
     '<span class="badge ' + n.type + '">' + (TYPES[n.type] || n.type) + '</span>' +
-    '<span class="when">' + fmtTime(n.time) + '</span></div>' + body;
+    '<span class="when">' + esc(fmtTime(n.time)) + '</span></div>' + body;
 
   if (rs.length) {
     h += '<div class="replies">';
     for (const r of rs) {
       h += '<div class="reply ' + r.author + '"><b>' + esc(userName(r.author)) + '</b>：' + esc(r.text) +
-        '<span class="rt">' + fmtTime(r.time) + '</span>' +
+        '<span class="rt">' + esc(fmtTime(r.time)) + '</span>' +
         '<button class="rdel" data-rid="' + esc(r.id) + '">删</button></div>';
     }
     h += '</div>';

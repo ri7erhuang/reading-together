@@ -108,11 +108,18 @@ export function getBookBundle(bookId, withNotes = true) {
   };
 }
 
-/** 只取书信息 + 章节 + 批注，不含段落（首屏用，段落按章懒加载） */
+/** 只取书信息 + 章节 + 批注，不读段落（首屏用，段落按章懒加载） */
 export function getBookMeta(bookId, withNotes = true) {
-  const bundle = getBookBundle(bookId, false);
-  if (!bundle) return null;
-  return { book: bundle.book, chapters: bundle.chapters, notes: withNotes ? notesOf(bookId) : [] };
+  const b = one('SELECT * FROM books WHERE id = ?', bookId);
+  if (!b) return null;
+  return {
+    book: {
+      id: b.id, title: b.title, author: b.author, sourceType: b.source_type,
+      fileName: b.file_name, tag: b.tag, meta: safeJson(b.meta), createdAt: b.created_at
+    },
+    chapters: chaptersOf(bookId),
+    notes: withNotes ? notesOf(bookId) : []
+  };
 }
 
 /** 单章段落，用于懒加载 */
@@ -141,6 +148,9 @@ export function findDuplicateBook(parsed) {
 
 /* ---------------- 批注 ---------------- */
 
+/** 校验类错误：带 400，让路由层能映射成客户端错误 */
+const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
+
 const NOTE_TYPES = new Set(['tucao', 'question', 'kaodian', 'brilliant', 'aiask']);
 const AUTHORS = new Set(['dad', 'son', 'ai']);
 
@@ -150,11 +160,11 @@ export function createNote(input) {
   const text = String(input.text || '').trim();
   const author = AUTHORS.has(input.author) ? input.author : 'dad';
   const type = NOTE_TYPES.has(input.type) ? input.type : 'kaodian';
-  if (!text) throw new Error('批注内容不能为空');
-  if (text.length > 8000) throw new Error('批注太长了');
+  if (!text) throw bad('批注内容不能为空');
+  if (text.length > 8000) throw bad('批注太长了（8000 字以内）');
 
   const p = one('SELECT text, hash FROM paragraphs WHERE book_id = ? AND para_idx = ?', bookId, paraIdx);
-  if (!p) throw new Error('找不到对应的段落');
+  if (!p) throw bad('找不到对应的段落');
   const quote = String(input.quote || '').trim();
   const loc = quote ? locateQuote(p.text, quote) : null;
 
@@ -180,7 +190,7 @@ export function getNote(id) {
 
 export function updateNote(id, patch) {
   const r = one('SELECT * FROM notes WHERE id = ?', id);
-  if (!r) throw new Error('批注不存在');
+  if (!r) throw bad('批注不存在');
   const text = patch.text != null ? String(patch.text).trim() : r.text;
   const type = patch.type && NOTE_TYPES.has(patch.type) ? patch.type : r.type;
   let quote = patch.quote != null ? String(patch.quote).trim() : r.quote;
@@ -193,7 +203,7 @@ export function updateNote(id, patch) {
   }
   if (patch.paraIdx != null && Number(patch.paraIdx) !== r.para_idx) {
     const p = one('SELECT text, hash FROM paragraphs WHERE book_id = ? AND para_idx = ?', r.book_id, Number(patch.paraIdx));
-    if (!p) throw new Error('目标段落不存在');
+    if (!p) throw bad('目标段落不存在');
     const loc = quote ? locateQuote(p.text, quote) : null;
     run('UPDATE notes SET para_idx=?, para_hash=?, quote=?, offset=?, qlen=?, text=?, type=?, updated_at=? WHERE id=?',
       Number(patch.paraIdx), p.hash, quote, loc ? loc.offset : null, loc ? loc.len : null, text, type, nowStr(), id);
@@ -211,8 +221,8 @@ export function deleteNote(id) {
 export function addReply(noteId, author, text) {
   if (!one('SELECT id FROM notes WHERE id = ? AND deleted_at IS NULL', noteId)) throw new Error('批注不存在');
   const t = String(text || '').trim();
-  if (!t) throw new Error('回复不能为空');
-  if (t.length > 4000) throw new Error('回复太长了');
+  if (!t) throw bad('回复不能为空');
+  if (t.length > 4000) throw bad('回复太长了（4000 字以内）');
   const id = uid('rp');
   run('INSERT INTO replies(id, note_id, author, text, created_at) VALUES(?,?,?,?,?)',
     id, noteId, AUTHORS.has(author) ? author : 'dad', t, nowStr());
@@ -267,9 +277,9 @@ export function buildExport() {
  */
 let exportBusy = false;
 
-export async function writeDailyExport() {
+export async function writeDailyExport({ force = false } = {}) {
   const file = path.join(EXPORT_DIR, 'archive-' + todayStr() + '.json');
-  if (fs.existsSync(file)) return file;
+  if (!force && fs.existsSync(file)) return file;
   if (exportBusy) return file;
   exportBusy = true;
   try {
@@ -297,6 +307,10 @@ function pruneExports() {
 /* ---------------- 旧 localStorage 迁移 ---------------- */
 
 export function migrateLocal(payload) {
+  return tx(() => migrateLocalInner(payload));
+}
+
+function migrateLocalInner(payload) {
   const builtin = one("SELECT id FROM books WHERE json_extract(meta, '$.builtin') = 1");
   const bookId = payload.bookId || (builtin && builtin.id);
   const result = { notes: 0, replies: 0, hidden: 0, skipped: 0, names: false };
@@ -339,10 +353,12 @@ export function migrateLocal(payload) {
         if (!Array.isArray(list)) continue;
         for (const r of list) {
           if (!r || !r.text) continue;
-          if (one('SELECT id FROM replies WHERE id = ?', r.id)) continue;
+          // 旧数据里可能没有 id：先补一个再查重，否则绑定 undefined 会抛错
+          const rid = r.id || uid('rp');
+          if (one('SELECT id FROM replies WHERE id = ?', rid)) continue;
           if (!one('SELECT id FROM notes WHERE id = ?', noteId)) continue;
           run('INSERT INTO replies(id, note_id, author, text, created_at) VALUES(?,?,?,?,?)',
-            r.id || uid('rp'), noteId, r.author === 'son' ? 'son' : 'dad', String(r.text),
+            rid, noteId, r.author === 'son' ? 'son' : 'dad', String(r.text),
             r.time || nowStr());
           result.replies++;
         }

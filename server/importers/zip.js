@@ -8,6 +8,7 @@ const SIG_CENTRAL = 0x02014b50;
 
 const MAX_ENTRIES = 5000;
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;   // 全书解压后的总上限，防御压缩炸弹
 
 function need(buf, off, len) {
   if (off < 0 || len < 0 || off + len > buf.length) {
@@ -75,6 +76,7 @@ export function readZip(buf) {
   if (count > MAX_ENTRIES) throw new Error('epub 内文件条目过多（' + count + '），已拒绝解析');
 
   const files = new Map();
+  let totalOut = 0;
   for (let n = 0; n < count; n++) {
     if (u32(buf, off) !== SIG_CENTRAL) break;
     const method = u16(buf, off + 10);
@@ -104,12 +106,19 @@ export function readZip(buf) {
       const raw = buf.subarray(start, start + csize);
       if (method === 0) {
         files.set(name, raw);
+        totalOut += raw.length;
       } else if (method === 8) {
         const limit = usize > 0 ? Math.min(usize + 1024, MAX_ENTRY_BYTES) : MAX_ENTRY_BYTES;
-        files.set(name, zlib.inflateRawSync(raw, { maxOutputLength: limit }));
+        const out = zlib.inflateRawSync(raw, { maxOutputLength: limit });
+        files.set(name, out);
+        totalOut += out.length;
       }
-    } catch {
-      // 单个条目损坏不影响整本书，跳过
+      if (totalOut > MAX_TOTAL_BYTES) {
+        throw new Error('epub 解压后体积超过 256MB，已中止解析');
+      }
+    } catch (e) {
+      // 总量超限必须中止；单条损坏可以跳过
+      if (/体积超过/.test(e.message)) throw e;
     }
     off += 46 + nlen + elen + clen;
   }

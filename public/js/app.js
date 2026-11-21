@@ -2,7 +2,7 @@ import { api, session, setUser, downloadExport } from './api.js';
 import { store, userName } from './store.js';
 import { esc, openModal, closeModal, toast, setLoading } from './ui.js';
 import { renderHome, bindHomeDnD } from './views/home.js';
-import { renderReader } from './views/reader.js';
+import { renderReader, leaveReader } from './views/reader.js';
 import { renderAdmin } from './views/admin.js';
 
 /* ================= 显示设置 ================= */
@@ -118,6 +118,8 @@ async function route() {
   const hash = location.hash || '';
   const m = /^#\/book\/([A-Za-z0-9_-]+)/.exec(hash);
   hideSelectionBar();
+  // 离开阅读页：中止进行中的 AI 流并保存进度
+  if (!m) leaveReader();
   try {
     if (m) {
       show('reader');

@@ -24,7 +24,8 @@ router.get('/dict', wrap(async (req, res) => {
   if (!w) throw new HttpError(400, '没有要查的字词');
   if (w.length > 40) throw new HttpError(400, '一次最多查 40 个字');
 
-  if (DICT[w]) {
+  // 用 hasOwn 判断：DICT[w] 直接取值会让 constructor / __proto__ 命中 Object 原型
+  if (Object.prototype.hasOwnProperty.call(DICT, w)) {
     return res.json({ word: w, pinyin: DICT[w][0], def: DICT[w][1], source: 'dict', exact: true });
   }
   let best = '';
@@ -55,8 +56,12 @@ router.get('/dict', wrap(async (req, res) => {
 
   const parsed = parseDictOutput(out, w);
   if (!parsed.def) return res.json({ word: w, found: false, source: 'none' });
-  run('INSERT INTO dict_cache(word, pinyin, def, source, created_at) VALUES(?,?,?,?,?) ON CONFLICT(word) DO NOTHING',
-    parsed.word, parsed.pinyin, parsed.def, 'ai', nowStr());
+  // 同时按「模型挑出的词」和「用户原始输入」写缓存：长句第二次才能命中
+  const cache = (key) => run(
+    'INSERT INTO dict_cache(word, pinyin, def, source, created_at) VALUES(?,?,?,?,?) ON CONFLICT(word) DO NOTHING',
+    key, parsed.pinyin, parsed.def, 'ai', nowStr());
+  cache(parsed.word);
+  if (parsed.word !== w) cache(w);
   res.json({ word: parsed.word, pinyin: parsed.pinyin, def: parsed.def, source: 'ai', exact: parsed.word === w });
 }));
 

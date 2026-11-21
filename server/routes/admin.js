@@ -98,7 +98,8 @@ router.get('/export', (_req, res) => {
 });
 
 router.post('/backup/now', wrap(async (_req, res) => {
-  const file = await writeDailyExport();
+  // 手动备份要覆盖当天的快照，而不是「今天已经写过了」直接返回
+  const file = await writeDailyExport({ force: true });
   res.json({ ok: true, file: String(file).split(/[\\/]/).pop() });
 }));
 

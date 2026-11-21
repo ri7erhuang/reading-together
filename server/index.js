@@ -40,14 +40,13 @@ app.use('/api', booksRouter, notesRouter, progressRouter, aiRouter, dictRouter, 
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 app.use(express.static(PUBLIC_DIR, {
   index: false,
-  // 静态资源交给 ETag 协商（未变则 304），HTML 每次都要校验
-  setHeaders: (res, filePath) => {
-    if (/\.html$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
-    else res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
-  }
+  // 一律协商缓存：改了文件立刻可见，没改则走 304 省流量
+  setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache'); }
 }));
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+  // 带扩展名的资源找不到时应当 404；回退成 index.html 会让浏览器把 HTML 当 JS 解析
+  if (path.extname(req.path)) return next();
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 

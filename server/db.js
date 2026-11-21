@@ -132,13 +132,17 @@ export function setSetting(key, value) {
 
 let txDepth = 0;
 
-/** 支持嵌套调用（内层直接复用外层事务） */
+/** 支持嵌套调用（内层直接复用外层事务）；只接受同步回调 */
 export function tx(fn) {
   if (txDepth > 0) return fn();
   db.exec('BEGIN');
   txDepth++;
   try {
     const out = fn();
+    if (out && typeof out.then === 'function') {
+      // 异步回调会在 await 之前就被 COMMIT，导致「事务」形同虚设
+      throw new Error('tx() 不支持异步回调');
+    }
     db.exec('COMMIT');
     txDepth--;
     return out;

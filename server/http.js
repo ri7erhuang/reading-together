@@ -4,15 +4,18 @@
 export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 /**
- * 业务校验失败（空内容、找不到段落等）默认按 400 返回，
- * 避免把「用户输入问题」当成 500 服务器错误。
+ * 业务校验失败（空内容、找不到段落等）按 400 返回；
+ * 其余异常继续向上抛，由错误中间件按 500 处理并记日志——
+ * 不能把 SQLite 报错、TypeError 这类服务端故障伪装成「用户输入有误」。
  */
 export const wrapClient = (fn) => wrap(async (req, res) => {
   try {
     return await fn(req, res);
   } catch (e) {
     if (e instanceof HttpError) throw e;
-    throw new HttpError(400, e.message || '操作失败');
+    const status = Number(e && e.status);
+    if (status >= 400 && status < 500) throw new HttpError(status, e.message || '请求有误');
+    throw e;
   }
 });
 

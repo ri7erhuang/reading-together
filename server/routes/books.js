@@ -50,7 +50,14 @@ router.post('/books/import', express.raw({ type: () => true, limit: '200mb' }), 
   const buf = req.body;
   if (!Buffer.isBuffer(buf) || !buf.length) throw new HttpError(400, '没有收到文件内容');
 
-  const { parsed, sourceType } = parseBook(buf, fileName, titleHint);
+  // 解析失败属于「文件有问题」，是客户端错误，不应该报 500
+  let parsed, sourceType;
+  try {
+    ({ parsed, sourceType } = parseBook(buf, fileName, titleHint));
+  } catch (e) {
+    throw new HttpError(400, e.message || '这个文件解析不了，换个文件试试');
+  }
+
   const dup = findDuplicateBook(parsed);
   if (dup && req.query.force !== '1') {
     return res.status(409).json({

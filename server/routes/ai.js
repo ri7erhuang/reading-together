@@ -1,7 +1,7 @@
 /* 问 AI：SSE 流式回答 + 客户端断开时中止上游 */
 import express from 'express';
-import { run } from '../db.js';
-import { getBookBundle, getNote, createNote } from '../library.js';
+import { run, one } from '../db.js';
+import { getNote, createNote } from '../library.js';
 import { streamChat, readingMessages } from '../llm.js';
 import { sseStart, wrapClient, HttpError } from '../http.js';
 import { nowStr } from '../util.js';
@@ -10,12 +10,13 @@ const router = express.Router();
 
 /**
  * 把回答流式写进 res，同时把完整结果落库。
- * 客户端中途断开时：中止上游请求，并把已生成的部分保存下来（可重试续写）。
+ * 客户端中途断开：中止上游，且**不落库**（保留 null，用户可以重试），
+ * 避免把半截回答当成最终答案。
  */
 async function answerInto(req, res, note, question) {
-  const bundle = getBookBundle(note.bookId, false);
-  const para = bundle && bundle.paras.find((p) => p.i === note.paraIdx);
+  const para = one('SELECT text FROM paragraphs WHERE book_id = ? AND para_idx = ?', note.bookId, note.paraIdx);
   if (!para) throw new HttpError(400, '原文段落已被删除');
+  const book = one('SELECT title FROM books WHERE id = ?', note.bookId);
 
   const ac = new AbortController();
   const sse = sseStart(req, res, () => ac.abort());
@@ -24,7 +25,7 @@ async function answerInto(req, res, note, question) {
   let acc = '';
   try {
     const messages = readingMessages({
-      bookTitle: bundle.book.title,
+      bookTitle: book ? book.title : '',
       paraText: para.text,
       quote: note.quote,
       question
@@ -36,17 +37,16 @@ async function answerInto(req, res, note, question) {
       if (!sse.send({ type: 'delta', text: delta })) break; // 写不出去说明客户端走了
     }
 
-    if (!acc.trim()) acc = '（模型没有返回内容，稍后再试一次）';
+    if (ac.signal.aborted) return;   // 中途断开：不写库，保持可重试
+
+    if (!acc.trim()) {
+      sse.send({ type: 'error', message: '模型没有返回内容，稍后再试一次' });
+      return;
+    }
     run('UPDATE notes SET answer = ?, updated_at = ? WHERE id = ?', acc, nowStr(), note.id);
     sse.send({ type: 'done', note: { ...note, answer: acc } });
   } catch (e) {
-    if (ac.signal.aborted) {
-      // 用户离开了页面：保留已生成的内容，下次可以重试补充
-      if (acc.trim()) {
-        run('UPDATE notes SET answer = ?, updated_at = ? WHERE id = ?', acc, nowStr(), note.id);
-      }
-      return;
-    }
+    if (ac.signal.aborted) return;
     sse.send({ type: 'error', message: String(e.message || e) });
   } finally {
     sse.close();
@@ -68,8 +68,8 @@ router.post('/ai/ask', wrapClient(async (req, res) => {
 router.post('/ai/retry/:id', wrapClient(async (req, res) => {
   const note = getNote(req.params.id);
   if (!note) throw new HttpError(404, '批注不存在');
-  run('UPDATE notes SET answer = NULL WHERE id = ?', note.id);
-  await answerInto(req, res, { ...note, answer: null }, note.text);
+  // 不预先清空旧答案：失败时旧答案还能留着，成功后再覆盖
+  await answerInto(req, res, note, note.text);
 }));
 
 export default router;

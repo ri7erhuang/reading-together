@@ -61,7 +61,7 @@ export function findQuote(text, quote) {
   if (!q) return null;
   let i = t.indexOf(q);
   if (i >= 0) return { s: i, e: i + q.length };
-  q = q.replace(/^[“「『《（(]+/, '').replace(/[”』』》）)]+$/, '').trim();
+  q = q.replace(/^[“「『《（(]+/, '').replace(/[”』」》）)]+$/, '').trim();
   if (!q) return null;
   i = t.indexOf(q);
   if (i >= 0) return { s: i, e: i + q.length };

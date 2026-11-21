@@ -23,10 +23,8 @@ export function llmConfig() {
 
 export function publicLlmConfig() {
   const c = llmConfig();
-  return {
-    base: c.base, model: c.model, enabled: c.enabled, keySource: c.keySource,
-    keyHint: c.key ? '••••' + c.key.slice(-4) : ''
-  };
+  // 不向前端回传 key 的任何片段，只给「有没有配」和来源
+  return { base: c.base, model: c.model, enabled: c.enabled, keySource: c.keySource };
 }
 
 async function* sseLines(res) {
@@ -47,16 +45,18 @@ async function* sseLines(res) {
   if (buf.trim()) yield buf.trim();
 }
 
-export async function* streamChat({ messages, temperature = 0.6, maxTokens = 700, userId = '', purpose = 'ask' }) {
+export async function* streamChat({ messages, temperature = 0.6, maxTokens = 700, userId = '', purpose = 'ask', signal = null }) {
   const cfg = llmConfig();
   if (!cfg.enabled) {
     yield* mockStream(messages);
     return;
   }
-  yield* realStream(cfg, messages, temperature, maxTokens, userId, purpose);
+  yield* realStream(cfg, messages, temperature, maxTokens, userId, purpose, signal);
 }
 
-async function* realStream(cfg, messages, temperature, maxTokens, userId, purpose) {
+async function* realStream(cfg, messages, temperature, maxTokens, userId, purpose, outerSignal) {
+  const timeout = AbortSignal.timeout(120000);
+  const signal = outerSignal && AbortSignal.any ? AbortSignal.any([timeout, outerSignal]) : timeout;
   const r = await fetch(cfg.base + '/chat/completions', {
     method: 'POST',
     headers: {
@@ -64,7 +64,7 @@ async function* realStream(cfg, messages, temperature, maxTokens, userId, purpos
       Authorization: 'Bearer ' + cfg.key
     },
     body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature, max_tokens: maxTokens, thinking: { type: 'disabled' } }),
-    signal: AbortSignal.timeout(120000)
+    signal
   });
   if (!r.ok || !r.body) {
     const detail = (await r.text().catch(() => '')).slice(0, 300);
@@ -97,7 +97,10 @@ export async function chatOnce({ messages, temperature = 0.4, maxTokens = 500, u
     body: JSON.stringify({ model: cfg.model, messages, stream: false, temperature, max_tokens: maxTokens, thinking: { type: 'disabled' } }),
     signal: AbortSignal.timeout(60000)
   });
-  if (!r.ok) throw new Error('模型接口返回 ' + r.status);
+  if (!r.ok) {
+    const detail = (await r.text().catch(() => '')).slice(0, 300);
+    throw new Error('模型接口返回 ' + r.status + (detail ? '：' + detail : ''));
+  }
   const data = await r.json();
   const u = data.usage || {};
   run('INSERT INTO llm_calls(user_id, purpose, model, tokens_in, tokens_out, created_at) VALUES(?,?,?,?,?,?)',

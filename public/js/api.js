@@ -38,51 +38,68 @@ export async function uploadBook(file, title) {
   const res = await fetch('/api/books/import', {
     method: 'POST', headers, body: await file.arrayBuffer()
   });
+  if (res.status === 409) {
+    const j = await res.json().catch(() => ({}));
+    const err = new Error(j.error || '这本书已经在书架上了');
+    err.duplicate = j.duplicate || null;
+    throw err;
+  }
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
 
-/** 读取服务端 SSE 流：onStart / onDelta / onDone / onError */
-export async function streamSSE(path, body, handlers = {}) {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-User': session.userId },
-    body: JSON.stringify(body || {})
-  });
-  if (!res.ok) throw new Error(await parseError(res));
-  if (!res.body) throw new Error('浏览器不支持流式响应');
+/**
+ * 读取服务端 SSE 流：onStart / onDelta / onDone / onError。
+ * 返回 { abort, promise }：abort 可随时中止（离开页面、切书时用），promise 用于等结束。
+ */
+export function streamSSE(path, body, handlers = {}) {
+  const ctrl = new AbortController();
 
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  let finished = false;
-  const dispatch = (chunk) => {
-    for (const line of chunk.split('\n')) {
-      if (!line.startsWith('data:')) continue;
-      const raw = line.slice(5).trim();
-      if (!raw) continue;
-      let ev;
-      try { ev = JSON.parse(raw); } catch { continue; }
-      if (ev.type === 'start' && handlers.onStart) handlers.onStart(ev.note);
-      else if (ev.type === 'delta' && handlers.onDelta) handlers.onDelta(ev.text);
-      else if (ev.type === 'done') { finished = true; handlers.onDone && handlers.onDone(ev.note); }
-      else if (ev.type === 'error') { finished = true; handlers.onError && handlers.onError(ev.message || '出错了'); }
-    }
-  };
+  const promise = (async () => {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User': session.userId },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    if (!res.body) throw new Error('浏览器不支持流式响应');
 
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
-      const chunk = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      dispatch(chunk);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let finished = false;
+
+    const dispatch = (chunk) => {
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        let ev;
+        try { ev = JSON.parse(raw); } catch { continue; }
+        if (ev.type === 'start' && handlers.onStart) handlers.onStart(ev.note);
+        else if (ev.type === 'delta' && handlers.onDelta) handlers.onDelta(ev.text);
+        else if (ev.type === 'done') { finished = true; handlers.onDone && handlers.onDone(ev.note); }
+        else if (ev.type === 'error') { finished = true; handlers.onError && handlers.onError(ev.message || '出错了'); }
+      }
+    };
+
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        dispatch(chunk);
+      }
     }
-  }
-  if (buf.trim()) dispatch(buf);
-  if (!finished) handlers.onError && handlers.onError('连接中断了，可以点重试');
+    if (buf.trim()) dispatch(buf);
+    if (!finished) handlers.onError && handlers.onError('连接中断了，可以点重试');
+  })();
+
+  return { abort: () => ctrl.abort(), promise };
 }
 
 export async function downloadExport() {

@@ -108,6 +108,37 @@ export function getBookBundle(bookId, withNotes = true) {
   };
 }
 
+/** 只取书信息 + 章节 + 批注，不含段落（首屏用，段落按章懒加载） */
+export function getBookMeta(bookId, withNotes = true) {
+  const bundle = getBookBundle(bookId, false);
+  if (!bundle) return null;
+  return { book: bundle.book, chapters: bundle.chapters, notes: withNotes ? notesOf(bookId) : [] };
+}
+
+/** 单章段落，用于懒加载 */
+export function parasOfChapter(bookId, chapterIdx) {
+  return all('SELECT para_idx, chapter_idx, text, hash, kind FROM paragraphs WHERE book_id = ? AND chapter_idx = ? ORDER BY para_idx',
+    bookId, chapterIdx).map((p) => ({ i: p.para_idx, ch: p.chapter_idx, text: p.text, hash: p.hash, kind: p.kind }));
+}
+
+/**
+ * 导入查重：段落总数一致 + 首段哈希一致，就认为是同一本书。
+ * 返回已存在的书（含 id/title），否则 null。
+ */
+export function findDuplicateBook(parsed) {
+  const paras = parsed.chapters.flatMap((c) => c.paras);
+  const total = paras.length;
+  if (!total) return null;
+  const firstHash = sha1(String(typeof paras[0] === 'string' ? paras[0] : paras[0].text)).slice(0, 16);
+  for (const b of all('SELECT id, title FROM books')) {
+    const n = one('SELECT COUNT(*) AS n FROM paragraphs WHERE book_id = ?', b.id).n;
+    if (n !== total) continue;
+    const p0 = one('SELECT hash FROM paragraphs WHERE book_id = ? AND para_idx = 0', b.id);
+    if (p0 && p0.hash === firstHash) return b;
+  }
+  return null;
+}
+
 /* ---------------- 批注 ---------------- */
 
 const NOTE_TYPES = new Set(['tucao', 'question', 'kaodian', 'brilliant', 'aiask']);
@@ -230,16 +261,37 @@ export function buildExport() {
   };
 }
 
-export function writeDailyExport() {
+/**
+ * 每日归档：异步写入 + 临时文件改名（避免写一半被读到）。
+ * 已经写过当天的文件就跳过；并发调用只跑一个。
+ */
+let exportBusy = false;
+
+export async function writeDailyExport() {
   const file = path.join(EXPORT_DIR, 'archive-' + todayStr() + '.json');
   if (fs.existsSync(file)) return file;
-  fs.writeFileSync(file, JSON.stringify(buildExport(), null, 2));
-  const files = fs.readdirSync(EXPORT_DIR).filter((f) => /^archive-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+  if (exportBusy) return file;
+  exportBusy = true;
+  try {
+    const payload = JSON.stringify(buildExport(), null, 2);
+    const tmp = file + '.tmp';
+    await fs.promises.writeFile(tmp, payload);
+    await fs.promises.rename(tmp, file);
+    pruneExports();
+    return file;
+  } finally {
+    exportBusy = false;
+  }
+}
+
+function pruneExports() {
+  const files = fs.readdirSync(EXPORT_DIR)
+    .filter((f) => /^archive-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+    .sort();
   while (files.length > 30) {
     const old = files.shift();
     try { fs.unlinkSync(path.join(EXPORT_DIR, old)); } catch {}
   }
-  return file;
 }
 
 /* ---------------- 旧 localStorage 迁移 ---------------- */

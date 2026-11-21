@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Syntax check
+        run: |
+          fail=0
+          for f in $(git ls-files '*.js'); do
+            if ! node --check "$f" 2>/tmp/err; then
+              echo "语法错误：$f"
+              cat /tmp/err
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Boot smoke test
+        run: |
+          node server/index.js &
+          pid=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8787/api/health >/dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8787/api/health | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:8787/api/bootstrap | grep -q '朝花夕拾'
+          curl -sf http://127.0.0.1:8787/ | grep -q '共读'
+          kill $pid

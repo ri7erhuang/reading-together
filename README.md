@@ -76,7 +76,7 @@ systemctl --user enable --now reading-together
 
 - 家里：`http://192.168.1.186:8787`
 - 出门：`http://100.122.38.53:8787`（tailscale）
-- 服务监听 `0.0.0.0:8787`，端口可用 `PORT` 环境变量改。
+- 服务默认监听 `0.0.0.0:8787`；端口用 `PORT`、监听地址用 `HOST` 环境变量改（只在本机用可设 `HOST=127.0.0.1`）。
 
 > 目前没有登录和鉴权，只适合放在家里 / tailscale 内网。不要直接映射到公网；要给外人看之前先加一层认证或走 Cloudflare Tunnel + Access。
 
@@ -84,17 +84,32 @@ systemctl --user enable --now reading-together
 
 | 路径 | 作用 |
 | --- | --- |
-| `server/index.js` | HTTP 路由：书籍、批注、回复、进度、AI、字典、设置、备份 |
-| `server/importers.js` | txt / epub 解析，统一成 `{title, chapters:[{title, paras}]}` |
-| `server/library.js` | 书籍与批注的数据库读写、导出、旧数据迁移 |
+| `server/index.js` | 入口：装配中间件、挂载路由、静态资源、错误处理、定时备份 |
+| `server/http.js` | 路由包装、`HttpError`、SSE 通道、请求头中文解码 |
+| `server/routes/` | 按领域拆分的路由：`books` `notes` `progress` `ai` `dict` `admin` |
+| `server/importers/` | 导入器：`index`（编码探测/分派）、`txt`、`epub`、`zip`（含 zip64 与解压上限） |
+| `server/library.js` | 书籍/批注/回复/进度的数据库读写，导出与旧数据迁移 |
 | `server/llm.js` | OpenAI 兼容的流式 / 非流式调用，示例回答兜底 |
-| `server/db.js` | SQLite 连接、建表、设置读写、事务 |
-| `server/seed.js` | 首次启动灌入内置书和示例批注 |
+| `server/dict-parse.js` | 把模型自由文本解析成「词/拼音/释义」 |
+| `server/db.js` | SQLite 连接、建表、设置读写、可嵌套事务 |
+| `server/seed.js` | 首次启动灌入内置书与示例批注 |
 | `server/dict.json` | 内置词表（32 条《朝花夕拾》常见词） |
+| `public/js/views/reader/` | 阅读器拆分：`state` `render` `events` `actions` `ai` `progress` |
 | `public/` | 前端：书架、阅读器、管理台、样式 |
 | `seed/texts.js` | 内置书全文（维基文库公版，繁体转简体） |
+| `tests/` | `node:test` 用例：导入解析、编码识别、字典解析、摘录定位、前端渲染 |
 | `data/` | 运行时数据（**不入库**）：`library.db`、`exports/`、`server.log` |
 | `tmp_fetch/` | 抓取的原始 wikitext 与 `build_texts.py`，用于重新生成 `seed/texts.js` |
+
+## 开发与测试
+
+```bash
+npm test          # 43 个用例：编码识别、章节切分、字典输出解析、锚点定位、渲染逻辑
+```
+
+GitHub Actions（`.github/workflows/ci.yml`）在 Node 22 / 24 上跑同样的测试，外加全量语法检查和一次启动冒烟（health + bootstrap + 首页）。
+
+前端改完刷新即可，不需要打包；后端改动用 `npm run dev`（`node --watch`）。
 
 ## 导入规则
 
@@ -113,8 +128,9 @@ systemctl --user enable --now reading-together
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/bootstrap` | 用户、书架、统计、模型状态 |
-| GET | `/api/books/:id` | 书 + 章节 + 段落 + 批注 + 进度 |
-| POST | `/api/books/import` | 原始文件体 + `X-Filename` 头 |
+| GET | `/api/books/:id` | 书 + 章节 + 批注 + 进度（**不含段落**，`?full=1` 才返回全部） |
+| GET | `/api/books/:id/chapters/:idx/paras` | 单章段落（阅读器按章懒加载） |
+| POST | `/api/books/import` | 原始文件体 + `X-Filename` 头；内容重复时返回 409（`?force=1` 强制导入） |
 | DELETE | `/api/books/:id` | 删书（连带批注） |
 | POST | `/api/notes` | 新建批注（后端定位锚点） |
 | PATCH/DELETE | `/api/notes/:id` | 编辑 / 墓碑删除 |

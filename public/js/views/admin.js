@@ -180,11 +180,11 @@ function paintSettings(settings) {
   const llm = settings.llm;
   let h = '<div class="form-card"><h3>大模型</h3>' +
     '<div class="sub">' + (llm.enabled
-      ? '已接通：' + esc(llm.model) + '（key 来源：' + esc(llm.keySource === 'env' ? '环境变量' : '后台设置') + '，' + esc(llm.keyHint) + '）'
+      ? '已接通：' + esc(llm.model) + '（key 来源：' + esc(llm.keySource === 'env' ? '环境变量' : '后台设置') + '）'
       : '还没配置 key，问 AI 和查字词会走示例回答') + '</div>' +
     '<label>接口地址（OpenAI 兼容）</label><input id="llmBase" value="' + esc(llm.base) + '" placeholder="https://api.z.ai/api/paas/v4">' +
     '<label>模型名</label><input id="llmModel" value="' + esc(llm.model) + '" placeholder="glm-4-flash">' +
-    '<label>API Key</label><input id="llmKey" type="password" placeholder="' + (llm.keyHint ? '已配置 ' + esc(llm.keyHint) + '，留空则不修改' : '粘贴 key，只存在这台机器的数据库里') + '">' +
+    '<label>API Key</label><input id="llmKey" type="password" placeholder="' + (llm.enabled ? '已配置，留空则不修改' : '粘贴 key，只存在这台机器的数据库里') + '">' +
     '<div class="row"><button class="tbtn" id="llmSave">保存</button>' +
     '<button class="tbtn" id="llmTest">测试连通</button>' +
     (llm.enabled ? '<button class="tbtn danger" id="llmClear">清除后台 key</button>' : '') +

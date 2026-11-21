@@ -6,7 +6,9 @@
   "description": "父子共读批注应用 —— 支持导入 txt / epub，后端统一管理书籍与批注",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "node --test tests/importers.test.js tests/dict-and-quote.test.js tests/render.test.js",
+    "check": "node --check server/index.js"
   },
   "dependencies": {
     "express": "^5.1.0"

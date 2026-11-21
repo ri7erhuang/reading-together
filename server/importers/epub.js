@@ -1,16 +1,15 @@
-import zlib from 'node:zlib';
-
-/* ============================================================
- * 导入器：把 txt / epub 归一化成
- *   { title, author, chapters: [ { title, paras: [{ text, kind }] } ] }
- * 下游（存储、阅读器、批注）只认这一种结构。
- * ============================================================ */
+/* EPUB 解析：OPF 清单 → spine 顺序 → 每章 HTML 转段落 */
+import { readZip } from './zip.js';
 
 const ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ldquo: '“', rdquo: '”',
   lsquo: '‘', rsquo: '’', hellip: '…', mdash: '—', ndash: '–', middot: '·',
   bull: '•', copy: '©', reg: '®', trade: '™', deg: '°', times: '×', divide: '÷'
 };
+
+function safeChar(code) {
+  try { return String.fromCodePoint(code); } catch { return ''; }
+}
 
 function decodeEntities(s) {
   return String(s)
@@ -22,144 +21,9 @@ function decodeEntities(s) {
     });
 }
 
-function safeChar(code) {
-  try { return String.fromCodePoint(code); } catch { return ''; }
-}
-
-/* ---------------- TXT ---------------- */
-
-const CHAPTER_RE = /^(第[一二三四五六七八九十百千零〇两\d]+[章节回卷篇部]|序章|序言|前言|后记|尾声|楔子|引子)\s*[^\n]{0,40}$/;
-
-function isChapterLine(line) {
-  const t = line.trim();
-  if (!t || t.length > 46) return false;
-  return CHAPTER_RE.test(t);
-}
-
-function splitLongBlock(text, max = 900) {
-  if (text.length <= max) return [text];
-  const out = [];
-  let rest = text;
-  while (rest.length > max) {
-    let cut = -1;
-    for (let i = max; i > max * 0.5; i--) {
-      if ('。！？；…'.includes(rest[i - 1])) { cut = i; break; }
-    }
-    if (cut < 0) cut = max;
-    out.push(rest.slice(0, cut).trim());
-    rest = rest.slice(cut);
-  }
-  if (rest.trim()) out.push(rest.trim());
-  return out;
-}
-
-export function parseTxt(rawText, fallbackTitle = '未命名') {
-  let text = String(rawText).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
-  text = text.replace(/\u0000/g, '');
-
-  const lines = text.split('\n');
-  const blankCount = lines.reduce((n, l) => n + (l.trim() ? 0 : 1), 0);
-  const blocksMode = blankCount >= 3; // 常见排版：段落之间有空行
-
-  const paras = [];
-  const chapters = [];
-  let current = { title: '正文', paras: [] };
-
-  const pushPara = (t) => {
-    t = String(t).replace(/[ \t\u3000]+$/g, '').trim();
-    if (!t) return;
-    for (const piece of splitLongBlock(t)) current.paras.push({ text: piece, kind: 'para' });
-  };
-
-  const pushChapter = (title) => {
-    if (current.paras.length) chapters.push(current);
-    current = { title: title || '正文', paras: [] };
-  };
-
-  if (blocksMode) {
-    let block = [];
-    const flush = () => {
-      if (!block.length) return;
-      // 块内多行：如果多数行有缩进，说明每行是一段；否则合并成一段
-      const indented = block.filter((l) => /^(\u3000|[ \t]{2,})/.test(l)).length;
-      if (block.length > 2 && indented >= block.length * 0.5) {
-        block.forEach((l) => {
-          if (isChapterLine(l)) pushChapter(l.trim());
-          else pushPara(l.replace(/^(\u3000|[ \t]{2,})/, ''));
-        });
-      } else {
-        const joined = block.map((l) => l.trim()).filter(Boolean).join('');
-        if (isChapterLine(joined)) pushChapter(joined);
-        else pushPara(joined);
-      }
-      block = [];
-    };
-    for (const line of lines) {
-      if (!line.trim()) { flush(); continue; }
-      block.push(line);
-    }
-    flush();
-  } else {
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      if (isChapterLine(line)) pushChapter(line.trim());
-      else pushPara(line.replace(/^(\u3000|[ \t]{2,})/, ''));
-    }
-  }
-
-  if (current.paras.length) chapters.push(current);
-  const usable = chapters.map((c) => ({ title: c.title, paras: c.paras }))
-    .filter((c) => c.paras.length);
-  if (!usable.length) throw new Error('这个 txt 里没有解析出正文，换个文件试试');
-  // 只有一个「正文」章节时，标题用首段前 24 字做个提示
-  if (usable.length === 1 && usable[0].title === '正文') usable[0].title = '正文';
-  return { title: fallbackTitle, author: '', chapters: usable };
-}
-
-/* ---------------- EPUB ---------------- */
-
-function readZip(buf) {
-  let eocd = -1;
-  const min = Math.max(0, buf.length - 66000);
-  for (let i = buf.length - 22; i >= min; i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) throw new Error('不是合法的 epub（zip 结构），可能文件损坏或只是改了后缀');
-
-  const count = buf.readUInt16LE(eocd + 10);
-  let off = buf.readUInt32LE(eocd + 16);
-  const entries = [];
-  for (let n = 0; n < count; n++) {
-    if (buf.readUInt32LE(off) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(off + 10);
-    const csize = buf.readUInt32LE(off + 20);
-    const nlen = buf.readUInt16LE(off + 28);
-    const elen = buf.readUInt16LE(off + 30);
-    const clen = buf.readUInt16LE(off + 32);
-    const lho = buf.readUInt32LE(off + 42);
-    const name = buf.toString('utf8', off + 46, off + 46 + nlen);
-    entries.push({ name, method, csize, lho });
-    off += 46 + nlen + elen + clen;
-  }
-  if (!entries.length) throw new Error('epub 里没有文件条目');
-
-  const files = new Map();
-  for (const e of entries) {
-    try {
-      const nlen = buf.readUInt16LE(e.lho + 26);
-      const elen = buf.readUInt16LE(e.lho + 28);
-      const start = e.lho + 30 + nlen + elen;
-      const raw = buf.subarray(start, start + e.csize);
-      files.set(e.name, e.method === 0 ? raw : zlib.inflateRawSync(raw));
-    } catch {
-      // 个别损坏条目跳过即可
-    }
-  }
-  return files;
-}
-
 function resolvePath(baseDir, href) {
-  const clean = decodeURIComponent(String(href || '').split('#')[0]);
+  let clean = String(href || '').split('#')[0];
+  try { clean = decodeURIComponent(clean); } catch {}
   const joined = baseDir ? baseDir + '/' + clean : clean;
   const parts = [];
   for (const seg of joined.split('/')) {
@@ -170,26 +34,21 @@ function resolvePath(baseDir, href) {
   return parts.join('/');
 }
 
-function dirOf(p) {
+const dirOf = (p) => {
   const i = p.lastIndexOf('/');
   return i < 0 ? '' : p.slice(0, i);
-}
+};
 
 function attr(tag, name) {
   const m = new RegExp(name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(tag);
   return m ? (m[2] != null ? m[2] : m[3]) : '';
 }
 
-function textOfHtml(html) {
-  let s = String(html);
-  s = s.replace(/<!--[\s\S]*?-->/g, '');
-  s = s.replace(/<head[\s\S]*?<\/head>/gi, '');
-  s = s.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '');
-  return s;
-}
-
 function htmlToParas(html) {
-  let s = textOfHtml(html);
+  let s = String(html)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '');
   s = s.replace(/<br\s*\/?>/gi, '\n');
   s = s.replace(/<\/(p|div|h[1-6]|li|blockquote|section|article|tr|td|dd|dt|figcaption)>/gi, '\n\n');
   s = s.replace(/<(p|div|h[1-6]|li|blockquote|section|article|tr|td|dd|dt|figcaption)\b[^>]*>/gi, '\n\n');
@@ -261,8 +120,7 @@ export function parseEpub(buf) {
     while ((r = refRe.exec(spineBlock[0]))) {
       const tag = r[0];
       if (/linear\s*=\s*["']no["']/i.test(tag)) continue;
-      const idref = attr(tag, 'idref');
-      const item = manifest.get(idref);
+      const item = manifest.get(attr(tag, 'idref'));
       if (item) spine.push(item);
     }
   }

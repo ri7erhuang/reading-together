@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf7f0">
+<title>共读批注</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand" id="brand">共读<em>批注</em></div>
+    <div class="sub">各读一遍的书，边读边写</div>
+  </div>
+  <div class="spacer"></div>
+  <div id="whoSel"></div>
+  <button class="hbtn" id="btnDisplay">显示设置</button>
+  <button class="hbtn" id="btnAdmin">管理</button>
+  <button class="hbtn" id="btnExport">导出</button>
+</header>
+
+<div id="home"></div>
+<div id="reader" style="display:none"></div>
+<div id="admin" style="display:none"></div>
+
+<div id="selBar">
+  <button data-act="note">批注</button><button data-act="dict">查字词</button><button data-act="ai">问AI</button>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<div id="toast"></div>
+<div id="loading">载入中…</div>
+<div class="drop-hint" id="dropHint">松手，导入这本书</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
